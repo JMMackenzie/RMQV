@@ -1,0 +1,23 @@
+build/
+data/
+
+format_index/atire_to_ds2i
+format_index/indri_to_ds2i
+format_queries/kstem
+
+# Python junk
+*.pyc
+
+# Java junk
+.classpath
+.project
+*.jar
+.settings
+target/
+
+# CMake junk
+CMakeCache.txt
+CMakeFiles/
+*.cmake
+Makefile
+Testing/
