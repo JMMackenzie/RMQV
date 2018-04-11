@@ -117,13 +117,6 @@ target_link_libraries(shuffle_docids
   FastPFor_lib
   )
 
-add_executable(bench_rankers bench_rankers.cpp)
-
-add_executable(analyze_wand_data analyze_wand_data.cpp)
-target_link_libraries(analyze_wand_data
-  ${Boost_LIBRARIES}
-  FastPFor_lib
-  )
 
 # XXX Rodger: Disabled tests as they wouldn't build
 #enable_testing()
