@@ -18,6 +18,31 @@ namespace ds2i {
     typedef std::vector<std::pair<term_id_type, double>> weight_query;
 
 
+    void normalize_weighted_query(weight_query& query) {
+        // Sum of weights
+        double wsum = std::accumulate(query.begin(), query.end(), 0, 
+                                      [](auto &a, auto &b) {
+                                         return a +b.second;
+                                       });
+        for (size_t i = 0; i < query.size(); ++i) {
+          query[i].second = query[i].second/wsum;
+        }
+    }
+
+    // Assumes original query has unique terms only
+    void add_original_query(const double weight, weight_query& w_query, term_id_vec& original) {
+        double w_weight = 1-weight;
+        double original_term_weight = (1 / (original.size()*1.0f) ) * weight;
+        // Update expanded term weights
+        for (size_t i = 0; i < w_query.size(); ++i) {
+            w_query[i].second = w_query[i].second*w_weight;
+        }
+        // Add in original terms
+        for (size_t i = 0; i < original.size(); i++) {
+            w_query.emplace_back(original[i], original_term_weight);
+        }
+    }
+
     // Read lex file. Format = <string id, int id, f_t, c_t>
     void read_lexicon (std::ifstream &is, 
                        std::unordered_map<std::string, uint32_t>& lexicon) {

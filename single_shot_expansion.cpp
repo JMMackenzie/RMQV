@@ -23,7 +23,7 @@ namespace {
 void printUsage(const std::string &programName) {
   std::cerr << "Usage: " << programName
             << " index_type query_algorithm index_filename forward_index_filename --map map_filename --output out_name --wand wand_data_filename"
-            << " [--compressed-wand] [--query query_filename] [--kexp no_docs_for_expansion] [--texp no_terms_to_expand]
+            << " [--compressed-wand] [--query query_filename] [--kexp no_docs_for_expansion] [--texp no_terms_to_expand]"
             << " [--rweight rm_weight_original_query [0, 1]] [--kfinal no_docs_for_final] [--lexicon lexicon_file] " << std::endl;
 }
 } // namespace
@@ -56,7 +56,11 @@ void op_dump_trec(Functor query_func, // XXX!!!
     // Run queries
     for (auto const &query: queries) {
       std::vector<std::pair<double, uint64_t>> top_k;
+      auto tick = get_time_usecs();
       top_k = query_func(query.second); // All stages
+      auto tock = get_time_usecs();
+      double elapsedms = (tock-tick)/1000;
+      std::cerr << query.first << " took ~ " << elapsedms << " ms\n";
       output_trec(top_k, query.first, id_map, query_type, output); 
     }
 }
@@ -148,6 +152,8 @@ void rm_three_expansion(const char *index_filename,
               tmp(index, query, ranker); 
               auto tk = tmp.topk();
               auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
+              normalize_weighted_query(weighted_query);
+              add_original_query(r_weight, weighted_query, query);
               auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
               final_traversal(index, weighted_query, ranker);
               return final_traversal.topk();
@@ -158,6 +164,8 @@ void rm_three_expansion(const char *index_filename,
               tmp(index, query, ranker);
               auto tk = tmp.topk();
               auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
+              normalize_weighted_query(weighted_query);
+              add_original_query(r_weight, weighted_query, query);
               auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
               final_traversal(index, weighted_query, ranker);
               return final_traversal.topk();
@@ -168,6 +176,8 @@ void rm_three_expansion(const char *index_filename,
               tmp(index, query, ranker);
               auto tk = tmp.topk();
               auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
+              normalize_weighted_query(weighted_query);
+              add_original_query(r_weight, weighted_query, query);
               auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
               final_traversal(index, weighted_query, ranker);
               return final_traversal.topk();
@@ -178,6 +188,8 @@ void rm_three_expansion(const char *index_filename,
               tmp(index, query, ranker); 
               auto tk = tmp.topk();
               auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
+              normalize_weighted_query(weighted_query);
+              add_original_query(r_weight, weighted_query, query);
               auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
               final_traversal(index, weighted_query, ranker);
               return final_traversal.topk();
@@ -267,6 +279,12 @@ int main(int argc, const char **argv) {
 
     if (out_filename == nullptr || map_filename == nullptr) {
       std::cerr << "ERROR: Must provide map and output file. Quitting."
+                << std::endl;
+      return EXIT_FAILURE;
+    }
+    
+    if (r_weight < 0 || r_weight > 1) {
+      std::cerr << "Weight must be between 0 and 1/"
                 << std::endl;
       return EXIT_FAILURE;
     }

@@ -14,12 +14,6 @@
 #include <numeric>
 #include <sys/time.h>
 
-inline double get_time_usecs() { 
-   timeval tv;
-   gettimeofday(&tv, NULL);
-   return double(tv.tv_sec) * 1000000 + double(tv.tv_usec);
-}
-
 
 // STOLEN FROM FASTPFORLIB: Please credit in final README/paper
   template <class T> static void delta(T *data, const size_t size) {
