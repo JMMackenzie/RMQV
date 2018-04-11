@@ -99,12 +99,6 @@ target_link_libraries(single_shot_expansion
   )
 
 
-add_executable(profile_queries profile_queries.cpp)
-target_link_libraries(profile_queries
-  ${Boost_LIBRARIES}
-  FastPFor_lib
-  )
-
 add_executable(profile_decoding profile_decoding.cpp)
 target_link_libraries(profile_decoding
   ${Boost_LIBRARIES}
