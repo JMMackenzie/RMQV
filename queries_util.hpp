@@ -13,12 +13,9 @@
 
 namespace ds2i {
 
-    struct query_data {
-        uint32_t qid;
-        std::vector<uint32_t> terms;
-    };
     typedef uint32_t term_id_type;
     typedef std::vector<term_id_type> term_id_vec;
+    typedef std::vector<std::pair<term_id_type, double>> weight_query;
 
 
     // Read lex file. Format = <string id, int id, f_t, c_t>
@@ -31,6 +28,21 @@ namespace ds2i {
       }
       std::cerr << "Lexicon read: " << lexicon.size() << " terms" << std::endl;
     }
+
+    // Read lex file. Format = <string id, int id, f_t, c_t>
+    // include reverse mapping
+    void read_lexicon (std::ifstream &is, 
+                       std::unordered_map<std::string, uint32_t>& lexicon,
+                       std::unordered_map<uint32_t, std::string>& reverse) {
+      std::string term;
+      size_t id, f_t, c_t;
+      while (is >> term >> id >> f_t >> c_t) {
+        lexicon.insert({term, id});
+        reverse.insert({id, term});
+      }
+      std::cerr << "Lexicon read: " << lexicon.size() << " terms" << std::endl;
+    }
+
 
     // String query with ID
     bool read_query(term_id_vec &ret, uint32_t &qid, std::unordered_map<std::string, uint32_t>& lex, 

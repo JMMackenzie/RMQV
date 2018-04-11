@@ -18,7 +18,7 @@ if (UNIX)
    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
 
    # Extensive warnings
-   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-missing-braces")
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-missing-braces -Wno-unused-parameter")
    # Silence a warning bug in Boost
    if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedefs")
@@ -80,6 +80,20 @@ target_link_libraries(queries
 
 add_executable(trec_queries trec_queries.cpp)
 target_link_libraries(trec_queries
+  ${Boost_LIBRARIES}
+  FastPFor_lib
+  )
+
+
+add_executable(dump_rm dump_rm.cpp docvector/compress_qmx.cpp)
+target_link_libraries(dump_rm
+  ${Boost_LIBRARIES}
+  FastPFor_lib
+  )
+
+
+add_executable(single_shot_expansion single_shot_expansion.cpp docvector/compress_qmx.cpp)
+target_link_libraries(single_shot_expansion
   ${Boost_LIBRARIES}
   FastPFor_lib
   )

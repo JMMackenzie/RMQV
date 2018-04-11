@@ -15,7 +15,7 @@ void printUsage(const std::string &programName) {
             << " <collection basename> <output filename> <ranker name>"
             << " [--variable-block]"
             << "[--compress]" << std::endl;
-  std::cerr << "Ranker names are: BM25, DPH, LMDS, LMJM, HLM, TFIDF, TERRIER_TFIDF or LEMUR_TFIDF" << std::endl;
+  std::cerr << "Ranker names are: BM25 or LMDS" << std::endl;
 }
 } // namespace
 

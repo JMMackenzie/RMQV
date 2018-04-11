@@ -49,8 +49,6 @@ namespace ds2i {
             
             // TF-IDF requires a document weight computation. We will do it here
             // if we see that the wand file is a TF-IDF one.
-            if (ranker->id() == ranker_identifier::TFIDF)
-              compute_tf_idf_weights = true;
  
             if (compute_tf_idf_weights) {
               std::cerr << "Computing TF/IDF doc weights\n";

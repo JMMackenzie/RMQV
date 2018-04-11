@@ -11,18 +11,23 @@
 #include "queries_util.hpp"
 #include <math.h>
 
+/* JM: This header implements ranked disjunctions with the
+ * addition of term-weighting on each term as supplied by
+ * a different query format: weight_query is typedef as
+ * std::vector<std::pair<term_id_type, float>> */
+
 namespace ds2i {
 
     template <typename WandType>
-    struct wand_query {
+    struct weighted_wand_query {
 
-        wand_query(WandType const &wdata, uint64_t k = 10)
-                : m_wdata(&wdata), m_topk(k) { 
+        weighted_wand_query(WandType const &wdata, uint64_t k = 10)
+                           : m_wdata(&wdata), m_topk(k) { 
 
         }
 
         template<typename Index>
-        std::pair<uint64_t, uint64_t> operator()(Index const &index, term_id_vec const &terms,
+        std::pair<uint64_t, uint64_t> operator()(Index const &index, weight_query const &terms,
                                                   std::unique_ptr<doc_scorer>& ranker) {
         
             m_topk.clear();
@@ -32,8 +37,6 @@ namespace ds2i {
             size_t PROFILE_postings_scored = 0;
             const size_t q_len = terms.size();
  
-            auto query_term_freqs = query_freqs(terms);
-
             uint64_t num_docs = index.num_docs();
             typedef typename Index::document_enumerator enum_type;
             struct scored_enum {
@@ -45,15 +48,15 @@ namespace ds2i {
             };
 
             std::vector<scored_enum> enums;
-            enums.reserve(query_term_freqs.size());
+            enums.reserve(terms.size());
 
-            for (auto term: query_term_freqs) {
+            for (auto term: terms) {
                 auto list = index[term.first];
-                auto q_weight = ranker->query_term_weight
-                        (term.second, list.size());
+                // assume each term occurs only once in the query
+                auto q_weight = ranker->query_term_weight(1, list.size()) * term.second; 
                 auto max_weight = q_weight * m_wdata->max_term_weight(term.first);
                 auto max_static_weight = m_wdata->max_document_weight(term.first);
-                double term_ctf = m_wdata->ctf(term.first); // JMM: We now have ctf
+                double term_ctf = m_wdata->ctf(term.first);
                 enums.push_back(
                   scored_enum { 
                           std::move(list), 
@@ -95,6 +98,7 @@ namespace ds2i {
                                                 ordered_enums[pivot]->max_document_weight);
                     upper_bound += ordered_enums[pivot]->max_term_weight;
 
+                    std::cerr << "UB = " << upper_bound << "\n";
                     if (m_topk.would_enter((q_len * max_static_score) + upper_bound)) {
                         found_pivot = true;
                         break;
@@ -158,15 +162,15 @@ namespace ds2i {
 
     
     template <typename WandType>
-    struct block_max_wand_query {
+    struct weighted_block_max_wand_query {
 
-        block_max_wand_query(WandType const &wdata, uint64_t k = 10)
-                : m_wdata(&wdata), m_topk(k) {
+        weighted_block_max_wand_query(WandType const &wdata, uint64_t k = 10)
+                                     : m_wdata(&wdata), m_topk(k) {
         }
 
 
         template<typename Index>
-        std::pair<uint64_t, uint64_t> operator()(Index const &index, term_id_vec const &terms,
+        std::pair<uint64_t, uint64_t> operator()(Index const &index, weight_query const &terms,
                                                  std::unique_ptr<doc_scorer>& ranker) {
             
             m_topk.clear();
@@ -176,8 +180,6 @@ namespace ds2i {
             size_t PROFILE_postings_scored = 0;
             const size_t q_len = terms.size();
  
-            auto query_term_freqs = query_freqs(terms);
-
             uint64_t num_docs = index.num_docs();
             typedef typename Index::document_enumerator enum_type;
             typedef typename WandType::wand_data_enumerator wdata_enum;
@@ -192,13 +194,13 @@ namespace ds2i {
             };
 
             std::vector<scored_enum> enums;
-            enums.reserve(query_term_freqs.size());
+            enums.reserve(terms.size());
 
-            for (auto term: query_term_freqs) {
+            for (auto term: terms) {
                 auto list = index[term.first];
                 auto w_enum = m_wdata->getenum(term.first);
-                auto q_weight = ranker->query_term_weight
-                        (term.second, list.size());
+                // assume each term occurs only once in the query
+                auto q_weight = ranker->query_term_weight(1, list.size()) * term.second; 
                 double max_weight = q_weight * m_wdata->max_term_weight(term.first);
                 double max_static_weight = m_wdata->max_document_weight(term.first);
                 double term_ctf = m_wdata->ctf(term.first);
@@ -415,14 +417,14 @@ namespace ds2i {
 
 
 template <typename WandType>
-    struct ranked_or_query {
+    struct weighted_ranked_or_query {
 
 
-        ranked_or_query(WandType const &wdata, uint64_t k = 10) 
-                : m_wdata(&wdata), m_topk(k) { }
+        weighted_ranked_or_query(WandType const &wdata, uint64_t k = 10) 
+                                : m_wdata(&wdata), m_topk(k) { }
 
         template<typename Index>
-        std::pair<uint64_t, uint64_t> operator()(Index const &index, term_id_vec terms,
+        std::pair<uint64_t, uint64_t> operator()(Index const &index, weight_query const &terms,
                                                 std::unique_ptr<doc_scorer>& ranker) {
 
             m_topk.clear();
@@ -432,7 +434,6 @@ template <typename WandType>
             size_t PROFILE_postings_scored = 0;
 
             const size_t q_len = terms.size();
-            auto query_term_freqs = query_freqs(terms);
 
             uint64_t num_docs = index.num_docs();
             typedef typename Index::document_enumerator enum_type;
@@ -443,13 +444,13 @@ template <typename WandType>
             };
 
             std::vector<scored_enum> enums;
-            enums.reserve(query_term_freqs.size());
+            enums.reserve(terms.size());
 
-            for (auto term: query_term_freqs) {
+            for (auto term: terms) {
                 auto list = index[term.first];
                 double ctf = m_wdata->ctf(term.first);
-                auto q_weight = ranker->query_term_weight
-                        (term.second, list.size());
+                // assume each term occurs only once in the query
+                auto q_weight = ranker->query_term_weight(1, list.size()) * term.second; 
                 enums.push_back(scored_enum {std::move(list), q_weight, ctf});
             }
 
@@ -496,14 +497,14 @@ template <typename WandType>
 
 
     template <typename WandType>
-    struct maxscore_query {
+    struct weighted_maxscore_query {
 
-        maxscore_query(WandType const &wdata, uint64_t k = 10)
-                : m_wdata(&wdata), m_topk(k) {
-        }
+        weighted_maxscore_query(WandType const &wdata, uint64_t k = 10)
+                               : m_wdata(&wdata), m_topk(k) {
+        } 
 
         template<typename Index>
-        std::pair<uint64_t, uint64_t> operator()(Index const &index, term_id_vec const &terms,
+        std::pair<uint64_t, uint64_t> operator()(Index const &index, weight_query const &terms,
                                                 std::unique_ptr<doc_scorer>& ranker) {
 
             m_topk.clear();
@@ -512,8 +513,6 @@ template <typename WandType>
             size_t PROFILE_unique_pivots = 0;
             size_t PROFILE_postings_scored = 0;
             const size_t q_len = terms.size(); 
-
-            auto query_term_freqs = query_freqs(terms);
 
             uint64_t num_docs = index.num_docs();
             typedef typename Index::document_enumerator enum_type;
@@ -526,12 +525,12 @@ template <typename WandType>
             };
 
             std::vector<scored_enum> enums;
-            enums.reserve(query_term_freqs.size());
+            enums.reserve(terms.size());
 
-            for (auto term: query_term_freqs) {
+            for (auto term: terms) {
                 auto list = index[term.first];
-                auto q_weight = ranker->query_term_weight
-                        (term.second, list.size());
+                // assume each term occurs only once in the query
+                auto q_weight = ranker->query_term_weight(1, list.size()) * term.second; 
                 auto max_weight = q_weight * m_wdata->max_term_weight(term.first);
                 auto max_static_weight = m_wdata->max_document_weight(term.first);
                 double term_ctf = m_wdata->ctf(term.first);
