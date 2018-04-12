@@ -29,6 +29,54 @@ namespace ds2i {
         }
     }
 
+    void query_from_ext_to_src(term_id_vec& original, std::unordered_map<term_id_type, term_id_type>& back_map) {
+        std::vector<term_id_type>::iterator it = original.begin();
+        while (it != original.end()) {
+            std::unordered_map<term_id_type, term_id_type>::const_iterator got = back_map.find (*it);
+            if ( got == back_map.end() ) {
+                logger() << "Erasing oov " << *it << std::endl; 
+                it = original.erase(it);
+            }
+            else {
+                logger() << "Changing " << *it << " to " << got->second << "." << std::endl; 
+                *it = got->second;
+                it++;
+            }
+        }
+    }
+
+    void normalize_weighted_query_ext(weight_query& query, std::unordered_map<term_id_type, term_id_type>& back_map) {
+        std::vector<std::pair<term_id_type, double>>::iterator it = query.begin();
+        
+        /* Remove out of vocabulary, and back map the term_ids to the target collection */
+        while (it != query.end()) {
+            std::unordered_map<term_id_type, term_id_type>::const_iterator got = back_map.find ((*it).first);
+            if ( got == back_map.end() ) {
+                logger() << "Erasing oov " << (*it).first << std::endl; 
+                it = query.erase(it);
+            }
+            else {
+                logger() << "Changing " << (*it).first << " to " << got->second << "." << std::endl; 
+                (*it).first = got->second;
+                it++;
+            }
+        }
+
+        // Sum of weights
+        double wsum = std::accumulate(query.begin(), query.end(), 0, 
+                                      [](auto &a, auto &b) {
+                                         return a +b.second;
+                                       });
+
+        if (wsum > 0.0) {
+            for (size_t i = 0; i < query.size(); ++i) {
+              query[i].second = query[i].second/wsum;
+              logger() << "Pair: <" << query[i].first << ", " << query[i].second << ">" << std::endl;
+            }
+        }
+    }
+
+
     // Assumes original query has unique terms only
     void add_original_query(const double weight, weight_query& w_query, term_id_vec& original) {
         double w_weight = 1-weight;
