@@ -75,6 +75,22 @@ namespace ds2i {
     }
 
 
+    void read_string_query_file(std::map<uint32_t, std::vector<std::string>>& queries, std::ifstream& in) {
+
+        std::string line;
+        while (std::getline(in, line)) {
+            std::istringstream iline(line);
+            uint32_t qid;
+            iline >> qid; // Read QID
+            std::string s;
+            std::vector<std::string> terms;
+            while (iline >> s) {
+                terms.push_back(s);
+            }
+            queries.emplace(qid, terms);
+        }
+    }
+
     // String query with ID
     bool read_query(term_id_vec &ret, uint32_t &qid, std::unordered_map<std::string, uint32_t>& lex, 
                     std::istream &is = std::cin) {

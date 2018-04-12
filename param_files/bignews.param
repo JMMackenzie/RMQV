@@ -1,7 +1,7 @@
 raw_collection=/research/local/joel/desires/ds2i_desires/collections/bignews/bignews
 inverted_index=/research/local/joel/desires/ds2i_desires/inverted_indexes/bignews_opt-pef.idx
 forward_index=/research/local/joel/desires/ds2i_desires/forward_indexes/bignews.forward_idx
-wand_file=/research/local/joel/desires/ds2i_desires/bignews_BM25_64.bmw
+wand_file=/research/local/joel/desires/ds2i_desires/inverted_indexes/bignews_BM25_64.bmw
 docs_to_expand=25
 terms_to_expand=25
 lambda_expand=0.1

@@ -1,7 +1,7 @@
 raw_collection=/research/local/joel/desires/ds2i_desires/collections/nyt/nyt
 inverted_index=/research/local/joel/desires/ds2i_desires/inverted_indexes/nyt_opt-pef.idx
 forward_index=/research/local/joel/desires/ds2i_desires/forward_indexes/nyt.forward_idx
-wand_file=/research/local/joel/desires/ds2i_desires/nyt_BM25_64.bmw
+wand_file=/research/local/joel/desires/ds2i_desires/inverted_indexes/nyt_BM25_64.bmw
 docs_to_expand=25
 terms_to_expand=25
 lambda_expand=0.1

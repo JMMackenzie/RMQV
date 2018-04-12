@@ -18,13 +18,13 @@
 #include "weighted_queries.hpp" // RM queries
 #include "util.hpp"
 #include "docvector/document_index.hpp"
+#include "collection_config.hpp"
 
 namespace {
 void printUsage(const std::string &programName) {
   std::cerr << "Usage: " << programName
-            << " index_type query_algorithm index_filename forward_index_filename --map map_filename --output out_name --wand wand_data_filename"
-            << " [--compressed-wand] --query query_filename --kexp no_docs_for_expansion --texp no_terms_to_expand"
-            << " --rweight rm_weight_original_query [0, 1] --kfinal no_docs_for_final --lexicon lexicon_file " << std::endl;
+            << " index_type query_algorithm target_collection_param --external external_collection_param [can have n of these]"
+            << " --query query_filename --output output_file" << std::endl;
 }
 } // namespace
 
@@ -65,7 +65,16 @@ void op_dump_trec(Functor query_func, // XXX!!!
     }
 }
 
-typedef boost::unordered_map<uint64_t, double> fuse_map;
+/*
+template<typename Functor>
+void op_extern_rm(Functor query_func,
+                  std::string query_file,
+
+    
+
+    for (auto const
+*/
+
 typedef std::vector<std::pair<double, uint64_t>> top_k_list;
 
 void do_join(std::thread& t)
@@ -73,92 +82,126 @@ void do_join(std::thread& t)
     t.join();
 }
 
+using namespace ds2i;
+
 template<typename IndexType, typename WandType>
-void rm_three_expansion(const char *index_filename,
-              const char *wand_data_filename,
-              const char *forward_index_filename,
-              std::vector<std::pair<uint32_t, ds2i::term_id_vec>> const &queries,
-              std::string const &type,
-              std::string const &query_type,
-              const char *map_filename,
-              const char *output_filename,
-              const uint64_t m_k,
-              const uint64_t exp_k,
-              const uint64_t expand_term_count,
-              const double r_weight) {
-    using namespace ds2i;
-    IndexType index;
-    logger() << "Loading index from " << index_filename << std::endl;
-    boost::iostreams::mapped_file_source m(index_filename);
-    succinct::mapper::map(index, m);
-
+struct collection_data {
+    
+    // Collection data
+    std::unique_ptr<IndexType> invidx;
+    std::unique_ptr<WandType> wdata; 
     document_index forward_index;
-    logger() << "Loading forward index from " << forward_index_filename << std::endl;
-    forward_index.load(std::string(forward_index_filename));
-
+    std::unique_ptr<doc_scorer> ranker;
+    std::unordered_map<std::string, uint32_t> lexicon;
     std::vector<std::string> doc_map;
-    logger() << "Loading map file from " << map_filename << std::endl;
-    std::ifstream map_in(map_filename);
-    std::string t_docid;
-    while (map_in >> t_docid) {
-      doc_map.emplace_back(t_docid); 
-    }
-    logger() << "Loaded " << doc_map.size() << " DocID's" << std::endl; 
-  
-    logger() << "Warming up posting lists" << std::endl;
-    std::unordered_set<term_id_type> warmed_up;
-    for (auto const &q: queries) {
-        for (auto t: q.second) {
-            if (!warmed_up.count(t)) {
-                index.warmup(t);
-                warmed_up.insert(t);
+    
+    // Expansion params
+    uint64_t docs_to_expand;
+    uint64_t terms_to_expand; 
+    uint64_t final_k; // only used in target
+    double lambda; // weight for original term
+
+    // Target?
+    bool target;
+
+    collection_data (const collection_config& conf) 
+                    : docs_to_expand(conf.m_docs_to_expand), 
+                      terms_to_expand(conf.m_terms_to_expand),
+                      final_k(conf.m_final_k),
+                      lambda(conf.m_lambda),
+                      target(conf.m_target)
+    {
+        // 1. Open inverted index and load
+        logger() << "Loading index from " << conf.m_invidx_file << std::endl;
+        invidx = std::unique_ptr<IndexType>(new IndexType);
+        boost::iostreams::mapped_file_source m(conf.m_invidx_file.c_str());
+        succinct::mapper::map(*invidx, m);
+    
+        // 2. Load forward index
+        logger() << "Loading forward index from " << conf.m_fidx_file << std::endl;
+        forward_index.load(conf.m_fidx_file);
+
+        // 3. Wand data
+        logger() << "Loading wand data from " << conf.m_wand_file << std::endl;
+        wdata = std::unique_ptr<WandType>(new WandType);
+        boost::iostreams::mapped_file_source mw(conf.m_wand_file.c_str());
+        succinct::mapper::map(*wdata, mw, succinct::mapper::map_flags::warmup);
+
+        // 4. Ranker      
+        std::unique_ptr<doc_scorer> ranker = build_ranker(wdata->average_doclen(), 
+                                                          wdata->num_docs(),
+                                                          wdata->terms_in_collection(),
+                                                          wdata->ranker_id());
+        // 5. Lexicon
+        std::ifstream in_lex(conf.m_lexicon_file);
+        read_lexicon(in_lex, lexicon);
+
+        // Only required for the target collection
+        if (target) {
+            logger() << "Loading map file from " << conf.m_map_file << std::endl;
+            std::ifstream map_in(conf.m_map_file);
+            std::string t_docid;
+            while (map_in >> t_docid) {
+                doc_map.emplace_back(t_docid); 
             }
         }
     }
 
-    WandType wdata;
+    
 
-    std::vector<std::string> query_types;
-    boost::algorithm::split(query_types, query_type, boost::is_any_of(":"));
-    boost::iostreams::mapped_file_source md;
-    if (wand_data_filename) {
-        md.open(wand_data_filename);
-        succinct::mapper::map(wdata, md, succinct::mapper::map_flags::warmup);
-    }
+};
 
+// Assume all indexes/wand files use the same type
+template<typename IndexType, typename WandType>
+void external_expansion(std::vector<collection_config>& collection_conf,
+              std::string query_file,
+              std::string const &type,
+              std::string const &query_type,
+              std::string output_filename) {
+   // using cdata = collection_data<IndexType, WandType>;
+    // Get the collections ready
+    std::vector<collection_data<IndexType, WandType>> all_collections;
+    for (size_t i = 0; i < collection_conf.size(); ++i) {
+        all_collections.emplace_back(collection_conf[i]); 
+    } 
+ 
     std::ofstream output_handle(output_filename);
 
-    // Init our ranker
-    std::unique_ptr<doc_scorer> ranker = build_ranker(wdata.average_doclen(), 
-                                                      wdata.num_docs(),
-                                                      wdata.terms_in_collection(),
-                                                      wdata.ranker_id());
-    // Final k documents to retrieve
-    uint64_t k_final = m_k;
+    // Read query file
+    std::ifstream qs(query_file);
+    std::map<uint32_t, std::vector<std::string>> queries;
+    read_string_query_file(queries, qs);
+    std::cerr << "Read " << queries.size() << " queries.\n";
 
-    // Initial k docs to retrieve
-    uint64_t k_expand = exp_k;    
+    for (const auto &query : queries) {
+        std::cerr << query.first << " --> ";
+        for (size_t j = 0; j < query.second.size(); ++j) {
+            std::cerr << query.second[j] << " ";
+        } 
+        std::cerr << std::endl;
+    }
 
-    logger() << "Performing " << type << " queries" << std::endl;
+    return;
+}
+/*
+    // Processing type
+    std::function<std::vector<std::pair<double, uint64_t>>(ds2i::term_id_vec)> query_fun;
+ 
+    if (t == "wand") {
 
-    for (auto const &t: query_types) {
-        logger() << "Query type: " << t << std::endl;
-        
-        std::function<std::vector<std::pair<double, uint64_t>>(ds2i::term_id_vec)> query_fun;
-        if (t == "wand" && wand_data_filename) {
-            query_fun = [&](ds2i::term_id_vec query) {
-              // Default returns count of top-k, but we want the vector
-              auto tmp = wand_query<WandType>(wdata, k_expand);
-              tmp(index, query, ranker); 
-              auto tk = tmp.topk();
-              auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
-              normalize_weighted_query(weighted_query);
-              add_original_query(r_weight, weighted_query, query);
-              auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
-              final_traversal(index, weighted_query, ranker);
-              return final_traversal.topk();
-            };
-        } else if (t == "block_max_wand" && wand_data_filename) {
+        query_fun = [&](ds2i::term_id_vec query) {
+           auto tmp = wand_query<WandType>(wdata, k_expand);
+           tmp(index, query, ranker); 
+           auto tk = tmp.topk();
+           auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
+           normalize_weighted_query(weighted_query);
+           add_original_query(r_weight, weighted_query, query);
+           auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
+           final_traversal(index, weighted_query, ranker);
+           return final_traversal.topk();
+         };
+
+    } else if (t == "block_max_wand") {
             query_fun = [&](ds2i::term_id_vec query) {
               auto tmp = block_max_wand_query<WandType>(wdata, k_expand);
               tmp(index, query, ranker);
@@ -170,7 +213,7 @@ void rm_three_expansion(const char *index_filename,
               final_traversal(index, weighted_query, ranker);
               return final_traversal.topk();
             };
-        }  else if (t == "ranked_or" && wand_data_filename) {
+        }  else if (t == "ranked_or") {
             query_fun = [&](ds2i::term_id_vec query) { 
               auto tmp = ranked_or_query<WandType>(wdata, k_expand);
               tmp(index, query, ranker);
@@ -182,7 +225,7 @@ void rm_three_expansion(const char *index_filename,
               final_traversal(index, weighted_query, ranker);
               return final_traversal.topk();
           };
-        } else if (t == "maxscore" && wand_data_filename) {
+        } else if (t == "maxscore") {
             query_fun = [&](ds2i::term_id_vec query) { 
               auto tmp = maxscore_query<WandType>(wdata, k_expand);
               tmp(index, query, ranker); 
@@ -201,7 +244,7 @@ void rm_three_expansion(const char *index_filename,
 
         op_dump_trec(query_fun, queries, doc_map, t, output_handle);
     }
-}
+}*/
 
 typedef wand_data<wand_data_raw> wand_raw_index;
 typedef wand_data<wand_data_compressed<uniform_score_compressor>> wand_uniform_index;
@@ -215,130 +258,65 @@ int main(int argc, const char **argv) {
     return 1;
     }
 
-    document_index forward_index;
-
     std::string type = argv[1];
     std::string query_type = argv[2];
-    const char *index_filename = argv[3];
-    const char *forward_filename = argv[4];
-    const char *wand_data_filename = nullptr;
-    const char *query_filename = nullptr;
-    const char *map_filename = nullptr;
-    const char *out_filename = nullptr;
-    const char *lexicon_filename = nullptr;
-    uint64_t m_k = 0;
-    uint64_t exp_k = 0;
-    uint64_t exp_t = 0;
-    double r_weight = 0;
+    std::string target_param = argv[3];
+    std::string query_file = "";
+    std::string output_file = "";
+    std::vector<std::string> external_param;
     bool compressed = false;
-    std::vector<std::pair<uint32_t, term_id_vec>> queries;
 
-    for (int i = 5; i < argc; ++i) {
+    for (int i = 4; i < argc; ++i) {
         std::string arg = argv[i];
-
-        if(arg == "--wand"){
-            wand_data_filename = argv[++i];;
-        }
 
         if(arg == "--compressed-wand"){
             compressed = true;
         }
 
         if (arg == "--query") {
-            query_filename = argv[++i];
-        }
-
-        if (arg == "--map") {
-            map_filename = argv[++i]; 
+            query_file = argv[++i];
         }
 
         if (arg == "--output") {
-          out_filename = argv[++i];
+            output_file = argv[++i];
         }
 
-        if (arg == "--kfinal") {
-          m_k = std::stoull(argv[++i]);
-        }
-
-        if (arg == "--kexp") {
-          exp_k = std::stoull(argv[++i]);
-        }
-
-        if (arg == "--texp") {
-          exp_t = std::stoull(argv[++i]);
-        }
- 
-        if (arg == "--lexicon") {
-          lexicon_filename = argv[++i];
-        }
-
-        if (arg == "--rweight") {
-          r_weight = std::stod(argv[++i]);
+        if (arg == "--external") {
+            std::string x = argv[++i];
+            external_param.push_back(x);
         }
     }
 
-    if (exp_k == 0 || m_k == 0 || exp_t == 0) {
-        std::cerr << "Must set --texp --kexp and --kfinal" << std::endl;
-        return EXIT_FAILURE;
-    }
-
-    if (out_filename == nullptr || map_filename == nullptr) {
-      std::cerr << "ERROR: Must provide map and output file. Quitting."
-                << std::endl;
+    if (output_file == "" or query_file == "") {
+      std::cerr << "ERROR: Must provide both query and output file. Quitting." << std::endl;
       return EXIT_FAILURE;
     }
-    
-    if (r_weight < 0 || r_weight > 1) {
-      std::cerr << "Weight must be between 0 and 1/"
-                << std::endl;
-      return EXIT_FAILURE;
+   
+    // Read config data
+    std::vector<collection_config> conf;
+    std::ifstream in_target(target_param);
+    conf.emplace_back(in_target, true);
+    in_target.close();
+    for (int i = 0; i < external_param.size(); i++) {
+        std::ifstream in_ex(external_param[i]);
+        conf.emplace_back(in_ex, false);
     }
 
+    //external_expansion<opt_index, wand_raw_index>
+    //  (conf, query_file, type, query_type, output_file);
+    //return;
 
-    std::unordered_map<std::string, uint32_t> lexicon;
-    if (lexicon_filename != nullptr) {
-      std::ifstream in_lex(lexicon_filename);
-      if (in_lex.is_open()) {
-        read_lexicon(in_lex, lexicon);
-      }
-      else {
-        std::cerr << "ERROR: Could not open lexicon file." << std::endl;
-      }
-    }
-
-    term_id_vec q;
-    uint32_t qid;
-    if(query_filename){
-        std::filebuf fb;
-        if (fb.open(query_filename, std::ios::in)) {
-            std::istream is(&fb);
-            if (lexicon_filename != nullptr) {
-              while (read_query(q, qid, lexicon, is)) queries.emplace_back(qid, q);
-            }
-            else {
-              while (read_query(q, qid, is)) queries.emplace_back(qid, q);
-            }
-        }
-    } else {
-        if (lexicon_filename != nullptr) {
-          while (read_query(q, qid, lexicon)) queries.emplace_back(qid, q);
-        }
-        else {
-          while (read_query(q, qid)) queries.emplace_back(qid, q);
-        }
-    }
-
-
+    // Call and run the real "fun"
     /**/
     if (false) {
 #define LOOP_BODY(R, DATA, T)                                                       \
         } else if (type == BOOST_PP_STRINGIZE(T)) {                                 \
             if (compressed) {                                                       \
-                 rm_three_expansion<BOOST_PP_CAT(T, _index), wand_uniform_index>              \
-                 (index_filename, wand_data_filename, forward_filename, queries, type, query_type, map_filename, out_filename, m_k, exp_k, exp_t, r_weight);   \
+                 external_expansion<BOOST_PP_CAT(T, _index), wand_uniform_index>              \
+                 (conf, query_file, type, query_type, output_file);   \
             } else {                                                                \
-                rm_three_expansion<BOOST_PP_CAT(T, _index), wand_raw_index>                   \
-                (index_filename, wand_data_filename, forward_filename, queries, type, query_type, map_filename, out_filename, m_k, exp_k, exp_t, r_weight);    \
+                external_expansion<BOOST_PP_CAT(T, _index), wand_raw_index>                   \
+                 (conf, query_file, type, query_type, output_file);   \
             }                                                                       \
     /**/
 

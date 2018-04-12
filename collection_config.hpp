@@ -6,14 +6,14 @@
 // Store collection data
 struct collection_config {
 
-  collection_config(std::ifstream& configuration) {
+  collection_config(std::ifstream& configuration, const bool target) {
 
     std::string line;
     while(std::getline(configuration, line)) {
         auto delim = line.find("=");
         std::string variable = line.substr(0, delim);
-        std::string value = line.substr(delim);
-        
+        std::string value = line.substr(delim+1);
+        std::cerr << "Variable = " << variable << " value = |" << value << "|\n"; 
         if (variable == "raw_collection") {
             m_lexicon_file = value + ".lexicon";
             m_map_file = value + ".docids";
@@ -22,7 +22,7 @@ struct collection_config {
             m_invidx_file = value;
         }
         else if (variable == "forward_index") {
-            m_forward_index = value;
+            m_fidx_file = value;
         }
         else if (variable == "wand_file") {
             m_wand_file = value;
@@ -44,7 +44,7 @@ struct collection_config {
             exit(EXIT_FAILURE);
         }
     }
-
+    m_target = target;
   }
   std::string m_lexicon_file = ""; //raw_collection.lexicon
   std::string m_map_file = ""; //raw_collection.docids
@@ -55,6 +55,8 @@ struct collection_config {
   uint64_t m_terms_to_expand = 0;
   double m_lambda = 0;
   uint64_t m_final_k = 0;
+  bool m_target = false;
+
 };
 
 
