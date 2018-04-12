@@ -86,6 +86,7 @@ void dump_rm(const char *index_filename,
         tmp(index, query.second, ranker); 
         auto tk = tmp.topk();
         auto weighted_query = forward_index.rm_expander(tk);
+        normalize_weighted_query(weighted_query);
         for(size_t i = 0; i < weighted_query.size() && i < 500; i++) {
           std::cerr << query.first << " " << i+1 << " " << reverse_lexicon[weighted_query[i].first] << " " << weighted_query[i].second << std::endl;
         }

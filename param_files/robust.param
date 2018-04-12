@@ -1,0 +1,8 @@
+raw_collection=/research/local/joel/desires/ds2i_desires/collections/reduced_robust/robust
+inverted_index=/research/local/joel/desires/ds2i_desires/inverted_indexes/robust_opt-pef.idx
+forward_index=/research/local/joel/desires/ds2i_desires/forward_indexes/robust.forward_idx
+wand_file=/research/local/joel/desires/ds2i_desires/robust_BM25_64.bmw
+docs_to_expand=25
+terms_to_expand=25
+lambda_expand=0.1
+final_k=1000

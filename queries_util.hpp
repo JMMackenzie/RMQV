@@ -43,6 +43,12 @@ namespace ds2i {
         }
     }
 
+    void dump_weighted_query(weight_query& q) {
+        for (size_t i = 0; i < q.size(); ++i) {
+          std::cerr << q[i].first << " " << q[i].second << std::endl;
+        }
+    }
+
     // Read lex file. Format = <string id, int id, f_t, c_t>
     void read_lexicon (std::ifstream &is, 
                        std::unordered_map<std::string, uint32_t>& lexicon) {

@@ -30,7 +30,7 @@ class document_index {
     document_index() : m_size(0) {}
 
     // Build a document index from ds2i files
-    document_index(std::string ds2i_basename) {
+    document_index(std::string ds2i_basename, std::unordered_set<uint32_t>& stoplist) {
         // Temporary 'plain' index structures
         std::vector<std::vector<uint32_t>> plain_terms;
         std::vector<std::vector<uint32_t>> plain_freqs;
@@ -54,6 +54,11 @@ class document_index {
         uint32_t term_id = 0;
         // Sequences are now aligned. Walk them.        
         while(!docs.eof() && !freqs.eof()) {
+
+            // Check if the term is stopped
+            bool stopped = (stoplist.find(term_id) != stoplist.end());
+
+
             docs.read(reinterpret_cast<char *>(&d_seq_len), sizeof(uint32_t));
             freqs.read(reinterpret_cast<char *>(&f_seq_len), sizeof(uint32_t));
             if (d_seq_len != f_seq_len) {
@@ -67,8 +72,11 @@ class document_index {
             while (seq_count < d_seq_len) {
                 docs.read(reinterpret_cast<char *>(&docid), sizeof(uint32_t));
                 freqs.read(reinterpret_cast<char *>(&fdt), sizeof(uint32_t));
-                plain_terms[docid].emplace_back(term_id);
-                plain_freqs[docid].emplace_back(fdt);
+                // Only emplace unstopped terms
+                if (!stopped) {
+                    plain_terms[docid].emplace_back(term_id);
+                    plain_freqs[docid].emplace_back(fdt);
+                }
                 ++seq_count;
             }
             ++term_id;
