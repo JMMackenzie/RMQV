@@ -104,6 +104,12 @@ target_link_libraries(external_corpora_expansion
   FastPFor_lib
   )
 
+add_executable(external_corpus_expansion external_corpus_expansion.cpp docvector/compress_qmx.cpp)
+target_link_libraries(external_corpus_expansion
+  ${Boost_LIBRARIES}
+  FastPFor_lib
+  )
+
 add_executable(profile_decoding profile_decoding.cpp)
 target_link_libraries(profile_decoding
   ${Boost_LIBRARIES}
