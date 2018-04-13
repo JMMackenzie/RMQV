@@ -23,7 +23,6 @@ class document_fuser {
       std::vector<std::vector<std::pair<double, uint64_t>>>& res_lists,
       std::vector<std::pair<double, uint64_t>>& dest) {
     std::unordered_map<uint64_t, double> accum;
-    // 1 / 60 + r(d)
 
     for (size_t i = 0; i < res_lists.size(); i++) {
       for (size_t j = 0; j < res_lists[i].size(); j++) {
