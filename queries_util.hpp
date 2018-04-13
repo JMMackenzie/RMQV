@@ -122,6 +122,18 @@ namespace ds2i {
       std::cerr << "Lexicon read: " << lexicon.size() << " terms" << std::endl;
     }
 
+    std::vector<term_id_type> parse_query(const std::vector<std::string>& query,
+                                          const std::unordered_map<std::string, uint32_t>& lexicon) {
+        std::vector<term_id_type> parsed_query;
+        for (const auto& term : query) {
+            auto f = lexicon.find(term);
+            if (f != lexicon.end()) {
+                parsed_query.emplace_back(f->second);
+            }
+        }
+        std::cerr << parsed_query.size() << std::endl;
+        return parsed_query;
+    }
 
     void read_string_query_file(std::map<uint32_t, std::vector<std::string>>& queries, std::ifstream& in) {
 

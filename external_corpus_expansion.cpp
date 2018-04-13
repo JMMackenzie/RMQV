@@ -30,7 +30,7 @@ void printUsage(const std::string &programName) {
 
 using namespace ds2i;
 
-void output_trec(std::vector<std::pair<double, uint64_t>>& top_k,
+void output_trec(const std::vector<std::pair<double, uint64_t>>& top_k,
         uint32_t topic_id,
         std::vector<std::string>& id_map,
         std::string const &query_type,
@@ -90,11 +90,18 @@ struct collection_data {
     // Collection data
     std::unique_ptr<IndexType> invidx;
     std::unique_ptr<WandType> wdata; 
-    document_index forward_index;
+    //IndexType invidx;
+    //WandType wdata;
+    std::unique_ptr<document_index> forward_index;
+    //document_index forward_index;
     std::unique_ptr<doc_scorer> ranker;
     std::unordered_map<std::string, uint32_t> lexicon;
     std::vector<std::string> doc_map;
-    
+    std::unordered_map<uint32_t, uint32_t> back_map;
+
+    // Query data
+    std::vector<uint32_t> parsed_query;
+
     // Expansion params
     uint64_t docs_to_expand;
     uint64_t terms_to_expand; 
@@ -104,7 +111,30 @@ struct collection_data {
     // Target?
     bool target;
 
-    collection_data (const collection_config& conf) 
+   
+/* 
+    collection_data (const collection_data&& coll_dat) {
+        std::cerr << "MOVE Construction\n" ;
+        invidx = std::move(coll_dat.invidx);
+        wdata = std::move(coll_dat.wdata);
+        forward_index = std::move(coll_dat.forward_index);
+        ranker = std::move(coll_dat.ranker);
+        lexicon = std::move(coll_dat.lexicon);
+        doc_map = std::move(coll_dat.doc_map);
+        back_map = std::move(coll_dat.back_map);
+        parsed_query = std::move(coll_dat.parsed_query);
+        docs_to_expand = coll_dat.docs_to_expand;
+        terms_to_expand = coll_dat.terms_to_expand;
+        final_k = coll_dat.final_k;
+        lambda = coll_dat.lambda;
+        target = coll_dat.target;
+    }    
+*/
+    collection_data () {}
+
+    collection_data (const collection_config& conf, 
+                     const std::unordered_map<std::string, uint32_t>& target_lexicon 
+                     = std::unordered_map<std::string, uint32_t>()) 
                     : docs_to_expand(conf.m_docs_to_expand), 
                       terms_to_expand(conf.m_terms_to_expand),
                       final_k(conf.m_final_k),
@@ -119,7 +149,9 @@ struct collection_data {
     
         // 2. Load forward index
         logger() << "Loading forward index from " << conf.m_fidx_file << std::endl;
-        forward_index.load(conf.m_fidx_file);
+        forward_index = std::unique_ptr<document_index>(new document_index);
+        //document_index forward_index;
+        (*forward_index).load(conf.m_fidx_file);
 
         // 3. Wand data
         logger() << "Loading wand data from " << conf.m_wand_file << std::endl;
@@ -128,7 +160,8 @@ struct collection_data {
         succinct::mapper::map(*wdata, mw, succinct::mapper::map_flags::warmup);
 
         // 4. Ranker      
-        std::unique_ptr<doc_scorer> ranker = build_ranker(wdata->average_doclen(), 
+        //std::unique_ptr<doc_scorer> 
+        ranker = build_ranker(wdata->average_doclen(), 
                                                           wdata->num_docs(),
                                                           wdata->terms_in_collection(),
                                                           wdata->ranker_id());
@@ -145,9 +178,40 @@ struct collection_data {
                 doc_map.emplace_back(t_docid); 
             }
         }
+
+        // Only required for non-targets
+        else {
+            for (auto it : target_lexicon) { 
+                auto got = lexicon.find(it.first);
+                if ( got != lexicon.end() ) {
+                    back_map.emplace(it.second, got->second);
+                }
+            }
+        }
     }
 
+    weight_query run_rm() {
+        auto tmp = wand_query<WandType>(*wdata, docs_to_expand);
+        tmp(*invidx, parsed_query, ranker); 
+        auto tk = tmp.topk();
+        auto weighted_query = (*forward_index).rm_expander(tk, terms_to_expand);
+        if (!target) {
+            normalize_weighted_query_ext(weighted_query, back_map);
+            query_from_ext_to_src(parsed_query, back_map);
+            add_original_query(lambda, weighted_query, parsed_query);
+        }
+        else {
+            normalize_weighted_query(weighted_query);
+            add_original_query(lambda, weighted_query, parsed_query);
+        }
+        return weighted_query;
+    } 
     
+    top_k_list final_run (weight_query& w_query) {
+        auto final_traversal = weighted_maxscore_query<WandType>(*wdata, final_k);
+        final_traversal(*invidx, w_query, ranker);
+        return final_traversal.topk();
+    }
 
 };
 
@@ -158,13 +222,26 @@ void external_expansion(std::vector<collection_config>& collection_conf,
               std::string const &type,
               std::string const &query_type,
               std::string output_filename) {
-   // using cdata = collection_data<IndexType, WandType>;
+    using cdata = collection_data<IndexType, WandType>;
     // Get the collections ready
     std::vector<collection_data<IndexType, WandType>> all_collections;
-    for (size_t i = 0; i < collection_conf.size(); ++i) {
-        all_collections.emplace_back(collection_conf[i]); 
+    collection_data<IndexType, WandType> *target_handle;
+
+    all_collections.resize(1);
+    
+    cdata *x = new cdata(collection_conf[0]);
+/*
+    for (size_t i = 0; i < 1; i++){//collection_conf.size(); ++i) {
+        all_collections[i] = cdata(collection_conf[i]);
     } 
- 
+    
+    // Get handle on target, should be the first element
+    target_handle = &(all_collections[0]);
+    if (!target_handle->target) {
+        std::cerr << "Target handle is not on target collection. Exiting."
+                  << std::endl;
+    } 
+*/
     std::ofstream output_handle(output_filename);
 
     // Read query file
@@ -174,15 +251,42 @@ void external_expansion(std::vector<collection_config>& collection_conf,
     std::cerr << "Read " << queries.size() << " queries.\n";
 
     for (const auto &query : queries) {
-        std::cerr << query.first << " --> ";
-        for (size_t j = 0; j < query.second.size(); ++j) {
-            std::cerr << query.second[j] << " ";
-        } 
-        std::cerr << std::endl;
+
+        x->parsed_query = parse_query(query.second, x->lexicon);
+        x->run_rm();
+      /*  
+        // 1. Parse and set query for each collection
+        for (auto &coll : all_collections) {
+            coll.parsed_query = parse_query(query.second, coll.lexicon);
+            std::cerr << "p query size = " << coll.parsed_query.size() << ", terms = ";
+            for (size_t i = 0; i < coll.parsed_query.size(); i++) {
+                std::cerr << coll.parsed_query[i] << " ";
+            }
+            std::cerr << std::endl;
+        }
+
+        // 2. Run the RM process
+        std::vector<weight_query> target_queries;
+        for (auto &coll : all_collections) {
+            target_queries.emplace_back(coll.run_rm());
+        }
+
+        // 3. Run new query
+        std::vector<top_k_list> final_trec_runs;
+        for (auto &target : target_queries) {
+           final_trec_runs.emplace_back(target_handle->final_run(target));
+        }
+
+        for (const auto& top_k : final_trec_runs) { 
+            output_trec(top_k, query.first, target_handle->doc_map, "BIGFUSEBOI", output_handle); 
+        } */
     }
 
     return;
 }
+
+
+
 /*
     // Processing type
     std::function<std::vector<std::pair<double, uint64_t>>(ds2i::term_id_vec)> query_fun;
@@ -297,7 +401,7 @@ int main(int argc, const char **argv) {
     std::ifstream in_target(target_param);
     conf.emplace_back(in_target, true);
     in_target.close();
-    for (int i = 0; i < external_param.size(); i++) {
+    for (size_t i = 0; i < external_param.size(); i++) {
         std::ifstream in_ex(external_param[i]);
         conf.emplace_back(in_ex, false);
     }

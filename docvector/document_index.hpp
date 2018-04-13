@@ -184,7 +184,8 @@ class document_index {
 
         // Get the result and resize if needed
         result = get_rm_daat(feedback_ptr);
-        if (terms_to_expand > 0)
+        // Only shrink -- do not allow growth of result
+        if (terms_to_expand > 0 && result.size() > terms_to_expand)
           result.resize(terms_to_expand);
           
         return result;

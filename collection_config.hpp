@@ -13,7 +13,6 @@ struct collection_config {
         auto delim = line.find("=");
         std::string variable = line.substr(0, delim);
         std::string value = line.substr(delim+1);
-        std::cerr << "Variable = " << variable << " value = |" << value << "|\n"; 
         if (variable == "raw_collection") {
             m_lexicon_file = value + ".lexicon";
             m_map_file = value + ".docids";
