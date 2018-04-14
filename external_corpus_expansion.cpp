@@ -88,6 +88,9 @@ template<typename IndexType, typename WandType>
 struct collection_data {
     
     // Collection data
+    boost::iostreams::mapped_file_source m;
+    boost::iostreams::mapped_file_source mw;
+ 
     std::unique_ptr<IndexType> invidx;
     std::unique_ptr<WandType> wdata; 
     //IndexType invidx;
@@ -132,10 +135,8 @@ struct collection_data {
 */
     collection_data () {}
 
-    collection_data (const collection_config& conf, 
-                     const std::unordered_map<std::string, uint32_t>& target_lexicon 
-                     = std::unordered_map<std::string, uint32_t>()) 
-                    : docs_to_expand(conf.m_docs_to_expand), 
+    collection_data (const collection_config& conf) 
+                   : docs_to_expand(conf.m_docs_to_expand), 
                       terms_to_expand(conf.m_terms_to_expand),
                       final_k(conf.m_final_k),
                       lambda(conf.m_lambda),
@@ -144,7 +145,7 @@ struct collection_data {
         // 1. Open inverted index and load
         logger() << "Loading index from " << conf.m_invidx_file << std::endl;
         invidx = std::unique_ptr<IndexType>(new IndexType);
-        boost::iostreams::mapped_file_source m(conf.m_invidx_file.c_str());
+        m = boost::iostreams::mapped_file_source(conf.m_invidx_file.c_str());
         succinct::mapper::map(*invidx, m);
     
         // 2. Load forward index
@@ -156,7 +157,7 @@ struct collection_data {
         // 3. Wand data
         logger() << "Loading wand data from " << conf.m_wand_file << std::endl;
         wdata = std::unique_ptr<WandType>(new WandType);
-        boost::iostreams::mapped_file_source mw(conf.m_wand_file.c_str());
+        mw = boost::iostreams::mapped_file_source(conf.m_wand_file.c_str());
         succinct::mapper::map(*wdata, mw, succinct::mapper::map_flags::warmup);
 
         // 4. Ranker      
@@ -178,19 +179,20 @@ struct collection_data {
                 doc_map.emplace_back(t_docid); 
             }
         }
+    }
 
-        // Only required for non-targets
-        else {
-            for (auto it : target_lexicon) { 
-                auto got = lexicon.find(it.first);
-                if ( got != lexicon.end() ) {
-                    back_map.emplace(it.second, got->second);
-                }
+    void build_term_map(const std::unordered_map<std::string, uint32_t>& target_lexicon) {
+ 
+        for (auto it : target_lexicon) { 
+            auto got = lexicon.find(it.first);
+            if ( got != lexicon.end() ) {
+                back_map.emplace(it.second, got->second);
             }
         }
     }
 
     weight_query run_rm() {
+ 
         auto tmp = wand_query<WandType>(*wdata, docs_to_expand);
         tmp(*invidx, parsed_query, ranker); 
         auto tk = tmp.topk();
@@ -208,6 +210,9 @@ struct collection_data {
     } 
     
     top_k_list final_run (weight_query& w_query) {
+        for (const auto& x : w_query) {
+            std::cerr << "Lex check " << x.first << " " << lexicon.size() << std::endl;
+        }
         auto final_traversal = weighted_maxscore_query<WandType>(*wdata, final_k);
         final_traversal(*invidx, w_query, ranker);
         return final_traversal.topk();
@@ -226,22 +231,28 @@ void external_expansion(std::vector<collection_config>& collection_conf,
     // Get the collections ready
     std::vector<collection_data<IndexType, WandType>> all_collections;
     collection_data<IndexType, WandType> *target_handle;
-
-    all_collections.resize(1);
     
-    cdata *x = new cdata(collection_conf[0]);
-/*
-    for (size_t i = 0; i < 1; i++){//collection_conf.size(); ++i) {
-        all_collections[i] = cdata(collection_conf[i]);
+    
+    // Build each collection
+    for (size_t i = 0; i < collection_conf.size(); ++i) {
+        all_collections.emplace_back(collection_conf[i]);
     } 
-    
-    // Get handle on target, should be the first element
+
+
+    // Get handle on target and ensure it is indeed the target. We can assume
+    // target_handle is a valid pointer as long as we don't change the size
+    // of the all_collections container
     target_handle = &(all_collections[0]);
     if (!target_handle->target) {
         std::cerr << "Target handle is not on target collection. Exiting."
                   << std::endl;
+    }
+
+    // Iterate all non-targets and build term mapper
+    for (size_t i = 1; i < all_collections.size(); ++i) {
+        all_collections[i].build_term_map(target_handle->lexicon);
     } 
-*/
+
     std::ofstream output_handle(output_filename);
 
     // Read query file
@@ -251,10 +262,7 @@ void external_expansion(std::vector<collection_config>& collection_conf,
     std::cerr << "Read " << queries.size() << " queries.\n";
 
     for (const auto &query : queries) {
-
-        x->parsed_query = parse_query(query.second, x->lexicon);
-        x->run_rm();
-      /*  
+        
         // 1. Parse and set query for each collection
         for (auto &coll : all_collections) {
             coll.parsed_query = parse_query(query.second, coll.lexicon);
@@ -279,9 +287,8 @@ void external_expansion(std::vector<collection_config>& collection_conf,
 
         for (const auto& top_k : final_trec_runs) { 
             output_trec(top_k, query.first, target_handle->doc_map, "BIGFUSEBOI", output_handle); 
-        } */
+        } 
     }
-
     return;
 }
 
