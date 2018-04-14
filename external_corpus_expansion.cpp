@@ -186,7 +186,7 @@ struct collection_data {
         for (auto it : target_lexicon) { 
             auto got = lexicon.find(it.first);
             if ( got != lexicon.end() ) {
-                back_map.emplace(it.second, got->second);
+                back_map.emplace(got->second, it.second);
             }
         }
     }
