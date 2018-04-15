@@ -49,7 +49,6 @@ namespace ds2i {
             enums.reserve(query_term_freqs.size());
 
             for (auto term: query_term_freqs) {
-                std::cerr << "index size = " << index.size() << "\n";
                 auto list = index[term.first];
                 auto q_weight = ranker->query_term_weight
                         (term.second, list.size());

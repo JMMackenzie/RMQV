@@ -98,7 +98,6 @@ namespace ds2i {
                                                 ordered_enums[pivot]->max_document_weight);
                     upper_bound += ordered_enums[pivot]->max_term_weight;
 
-                    std::cerr << "UB = " << upper_bound << "\n";
                     if (m_topk.would_enter((q_len * max_static_score) + upper_bound)) {
                         found_pivot = true;
                         break;

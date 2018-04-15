@@ -34,11 +34,11 @@ namespace ds2i {
         while (it != original.end()) {
             std::unordered_map<term_id_type, term_id_type>::const_iterator got = back_map.find (*it);
             if ( got == back_map.end() ) {
-                logger() << "Erasing oov " << *it << std::endl; 
+                //logger() << "Erasing oov " << *it << std::endl; 
                 it = original.erase(it);
             }
             else {
-                logger() << "Changing " << *it << " to " << got->second << "." << std::endl; 
+                //logger() << "Changing " << *it << " to " << got->second << "." << std::endl; 
                 *it = got->second;
                 it++;
             }
@@ -52,11 +52,11 @@ namespace ds2i {
         while (it != query.end()) {
             std::unordered_map<term_id_type, term_id_type>::const_iterator got = back_map.find ((*it).first);
             if ( got == back_map.end() ) {
-                logger() << "Erasing oov " << (*it).first << std::endl; 
+                //logger() << "Erasing oov " << (*it).first << std::endl; 
                 it = query.erase(it);
             }
             else {
-                logger() << "Changing " << (*it).first << " to " << got->second << "." << std::endl; 
+                //logger() << "Changing " << (*it).first << " to " << got->second << "." << std::endl; 
                 (*it).first = got->second;
                 it++;
             }
@@ -71,7 +71,7 @@ namespace ds2i {
         if (wsum > 0.0) {
             for (size_t i = 0; i < query.size(); ++i) {
               query[i].second = query[i].second/wsum;
-              logger() << "Pair: <" << query[i].first << ", " << query[i].second << ">" << std::endl;
+              //logger() << "Pair: <" << query[i].first << ", " << query[i].second << ">" << std::endl;
             }
         }
     }
@@ -131,7 +131,6 @@ namespace ds2i {
                 parsed_query.emplace_back(f->second);
             }
         }
-        std::cerr << parsed_query.size() << std::endl;
         return parsed_query;
     }
 

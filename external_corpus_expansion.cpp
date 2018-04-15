@@ -18,6 +18,7 @@
 #include "weighted_queries.hpp" // RM queries
 #include "util.hpp"
 #include "docvector/document_index.hpp"
+#include "document_fuser.hpp" // RRF fusion
 #include "collection_config.hpp"
 
 namespace {
@@ -114,25 +115,6 @@ struct collection_data {
     // Target?
     bool target;
 
-   
-/* 
-    collection_data (const collection_data&& coll_dat) {
-        std::cerr << "MOVE Construction\n" ;
-        invidx = std::move(coll_dat.invidx);
-        wdata = std::move(coll_dat.wdata);
-        forward_index = std::move(coll_dat.forward_index);
-        ranker = std::move(coll_dat.ranker);
-        lexicon = std::move(coll_dat.lexicon);
-        doc_map = std::move(coll_dat.doc_map);
-        back_map = std::move(coll_dat.back_map);
-        parsed_query = std::move(coll_dat.parsed_query);
-        docs_to_expand = coll_dat.docs_to_expand;
-        terms_to_expand = coll_dat.terms_to_expand;
-        final_k = coll_dat.final_k;
-        lambda = coll_dat.lambda;
-        target = coll_dat.target;
-    }    
-*/
     collection_data () {}
 
     collection_data (const collection_config& conf) 
@@ -210,9 +192,6 @@ struct collection_data {
     } 
     
     top_k_list final_run (weight_query& w_query) {
-        for (const auto& x : w_query) {
-            std::cerr << "Lex check " << x.first << " " << lexicon.size() << std::endl;
-        }
         auto final_traversal = weighted_maxscore_query<WandType>(*wdata, final_k);
         final_traversal(*invidx, w_query, ranker);
         return final_traversal.topk();
@@ -260,35 +239,49 @@ void external_expansion(std::vector<collection_config>& collection_conf,
     std::map<uint32_t, std::vector<std::string>> queries;
     read_string_query_file(queries, qs);
     std::cerr << "Read " << queries.size() << " queries.\n";
+    
 
     for (const auto &query : queries) {
         
+        auto ttick = get_time_usecs();
         // 1. Parse and set query for each collection
         for (auto &coll : all_collections) {
             coll.parsed_query = parse_query(query.second, coll.lexicon);
-            std::cerr << "p query size = " << coll.parsed_query.size() << ", terms = ";
-            for (size_t i = 0; i < coll.parsed_query.size(); i++) {
-                std::cerr << coll.parsed_query[i] << " ";
-            }
-            std::cerr << std::endl;
         }
 
-        // 2. Run the RM process
-        std::vector<weight_query> target_queries;
-        for (auto &coll : all_collections) {
-            target_queries.emplace_back(coll.run_rm());
+        auto tick = get_time_usecs();
+        // 2. Run the RM process and then the final run
+        std::vector<std::thread> my_threads;
+        std::vector<top_k_list> final_trec_runs(all_collections.size());
+        for (size_t bucket = 0; bucket < all_collections.size(); ++bucket) {
+        // for (auto &coll : all_collections) {
+            auto q_thread = std::thread([&, bucket]() {
+                auto w_query = all_collections[bucket].run_rm();
+                auto w_result = target_handle->final_run(w_query);
+                final_trec_runs[bucket] = w_result;
+            });
+            my_threads.emplace_back(std::move(q_thread));
         }
+      
+        // Join
+        std::for_each(my_threads.begin(), my_threads.end(), do_join);
 
-        // 3. Run new query
-        std::vector<top_k_list> final_trec_runs;
-        for (auto &target : target_queries) {
-           final_trec_runs.emplace_back(target_handle->final_run(target));
-        }
-
-        for (const auto& top_k : final_trec_runs) { 
-            output_trec(top_k, query.first, target_handle->doc_map, "BIGFUSEBOI", output_handle); 
+        // Now we can fuse
+        top_k_list final_ranking;
+        document_fuser::hot_fuse(final_trec_runs, final_ranking);
+        if (final_ranking.size() > target_handle->final_k) {
+            final_ranking.resize(target_handle->final_k);
         } 
+        auto tock = get_time_usecs();
+        double elapsedms = (tock-tick)/1000;
+        std::cerr << query.first << " took ~ " << elapsedms << " ms\n";
+        elapsedms = (tock-ttick)/1000;
+        std::cerr << query.first << " took ~ " << elapsedms << " ms inc. parsing\n";
+
+
+        output_trec(final_ranking, query.first, target_handle->doc_map, "BIGFUSEBOI", output_handle); 
     }
+
     return;
 }
 

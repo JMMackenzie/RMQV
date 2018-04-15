@@ -91,7 +91,7 @@ void perftest(const char *index_filename,
     succinct::mapper::map(index, m);
 
 
-
+/*
     logger() << "Warming up posting lists" << std::endl;
     std::unordered_set<term_id_type> warmed_up;
     for (auto const &q: queries) {
@@ -101,7 +101,7 @@ void perftest(const char *index_filename,
                 warmed_up.insert(t);
             }
         }
-    }
+    }*/
 
     WandType wdata;
 

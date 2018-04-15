@@ -115,11 +115,11 @@ class document_index {
         }
     }
 
+    /*
     std::vector<std::pair<uint32_t, double>> 
     get_rm_indri(std::vector<vector_wrapper*>& docvectors) {
-
     } 
-
+    */
 
     // DaaT traversal for RM -- Non sort version
     std::vector<std::pair<uint32_t, double>> 

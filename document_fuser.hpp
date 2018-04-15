@@ -14,12 +14,13 @@
  * RRF fuse a top-k result list of <double, uint64_t> pairs.
  */
 class document_fuser {
-  const int k = 60;
+  static constexpr int k = 60;
 
+  public:
   /**
    * Fuse `n` result lists at the same time.
    */
-  void hot_fuse(
+  static void hot_fuse(
       std::vector<std::vector<std::pair<double, uint64_t>>>& res_lists,
       std::vector<std::pair<double, uint64_t>>& dest) {
     std::unordered_map<uint64_t, double> accum;
@@ -27,7 +28,7 @@ class document_fuser {
     for (size_t i = 0; i < res_lists.size(); i++) {
       for (size_t j = 0; j < res_lists[i].size(); j++) {
         auto key = res_lists[i][j].second;
-        accum[key] += 1 / (k + j + 1);
+        accum[key] += 1.0 / (k + j + 1);
       }
     }
 
