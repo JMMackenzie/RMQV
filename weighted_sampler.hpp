@@ -23,7 +23,49 @@ public:
     prng.seed(s);
   }
 
-  std::vector<uint64_t>
+
+  // Just calls generate_query batch_size times
+  std::vector<std::vector<uint32_t>>
+  generate_query_batch(std::vector<std::pair<uint32_t, double>>& rm, 
+                       int32_t min, int32_t max, size_t batch_size) {
+
+    std::vector<std::vector<uint32_t>> batch(batch_size);
+    for (size_t i = 0; i < batch.size(); ++i) {
+      batch[i] = generate_query(rm, min, max);
+    }
+    
+    return batch;    
+
+  }
+
+  // Just calls generate_query batch_size times but also adds original
+  // terms to each generated query with a coin flip
+  std::vector<std::vector<uint32_t>>
+  generate_query_batch(std::vector<std::pair<uint32_t, double>>& rm, 
+                       std::vector<uint32_t>& orig,
+                       int32_t min, int32_t max, size_t batch_size) {
+
+    std::vector<std::vector<uint32_t>> batch(batch_size);
+    for (size_t i = 0; i < batch.size(); ++i) {
+      batch[i] = generate_query(rm, min, max);
+      add_original_query(orig, batch[i]);
+    }
+   
+    return batch; 
+  }
+
+
+  // Adds the original query terms to the candidate vector with coin flips
+  void add_original_query(std::vector<uint32_t>& original, std::vector<uint32_t>& candidate) {
+    
+      for (size_t i = 0; i < original.size(); ++i) { 
+        if (rand(0,1) == 1) {
+          candidate.emplace_back(original[i]);
+        }
+      }
+  }
+
+  std::vector<uint32_t>
   generate_query(std::vector<std::pair<uint32_t, double>>& rm, int min, int max) {
     std::vector<double> cdf(rm.size(), 0.0);
 
@@ -34,7 +76,7 @@ public:
     }
 
     size_t n = rand(min, max);
-    std::vector<uint64_t> qry(n);
+    std::vector<uint32_t> qry(n);
     for (size_t i = 0; i < n; i++) {
       qry[i] = rm[bss(cdf, rand())].first;
     }
