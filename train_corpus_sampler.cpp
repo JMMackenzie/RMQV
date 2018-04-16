@@ -163,7 +163,7 @@ struct collection_data {
 
 // Assume all indexes/wand files use the same type
 template<typename IndexType, typename WandType>
-void external_sample(std::vector<collection_config>& collection_conf,
+void external_train(std::vector<collection_config>& collection_conf,
               std::string query_file,
               std::string const &type,
               std::string const &query_type,
@@ -176,29 +176,19 @@ void external_sample(std::vector<collection_config>& collection_conf,
     
 
     // Get the collections ready
-    std::vector<collection_data<IndexType, WandType>> all_collections;
-    collection_data<IndexType, WandType> *target_handle;
-    
-    
-    // Build each collection
-    for (size_t i = 0; i < collection_conf.size(); ++i) {
-        all_collections.emplace_back(collection_conf[i], &query_sampler);
-    } 
+    collection_data<IndexType, WandType> external_collection(collection_conf[1], &query_sampler);
+    collection_data<IndexType, WandType> target_collection(collection_conf[0], &query_sampler);
 
 
     // Get handle on target and ensure it is indeed the target. We can assume
     // target_handle is a valid pointer as long as we don't change the size
     // of the all_collections container
-    target_handle = &(all_collections[0]);
-    if (!target_handle->target) {
+    if (!target_collection.target) {
         std::cerr << "Target handle is not on target collection. Exiting."
                   << std::endl;
     }
 
-    // Iterate all non-targets and build term mapper
-    for (size_t i = 1; i < all_collections.size(); ++i) {
-        all_collections[i].build_term_map(target_handle->lexicon);
-    } 
+    external_collection.build_term_map(target_collection.lexicon);
 
     // Prepare output stream
     std::ofstream output_handle(output_filename);
@@ -215,37 +205,16 @@ void external_sample(std::vector<collection_config>& collection_conf,
         // 0. Begin time block here XXX 
         auto tick = get_time_usecs();
 
-        // 1. Parse and set query for each collection
-        for (auto &coll : all_collections) {
-            coll.parsed_query = parse_query(query.second, coll.lexicon);
-        }
-
+        external_collection.parsed_query = parse_query(query.second, external_collection.lexicon);
+        
         // 2. Run the RM process and generate queries
         std::vector<std::thread> my_threads;
-        std::vector<std::vector<term_id_vec>> all_q(all_collections.size());
-        for (size_t bucket = 0; bucket < all_collections.size(); ++bucket) {
-            auto q_thread = std::thread([&, bucket]() {
-                all_q[bucket] = all_collections[bucket].run_rm_sampler();
-            });
-            my_threads.emplace_back(std::move(q_thread));
-        }
-      
-        // Join the workers
-        std::for_each(my_threads.begin(), my_threads.end(), do_join);
-        my_threads.clear();
-
-        std::vector<term_id_vec*> all_subqueries;
-        for (size_t i = 0; i < all_q.size(); i++) {
-            for(size_t j = 0; j < all_q[i].size(); ++j) {
-                all_subqueries.emplace_back(&all_q[i][j]);
-            }
-        }
-
+        auto all_q = external_collection.run_rm_sampler();
   
-        std::vector<top_k_list> final_trec_runs(all_subqueries.size());
-         for (size_t bucket = 0; bucket < all_subqueries.size(); ++bucket) {
+        std::vector<top_k_list> final_trec_runs(all_q.size());
+        for (size_t bucket = 0; bucket < all_q.size(); ++bucket) {
             auto q_thread = std::thread([&, bucket]() {
-                final_trec_runs[bucket] = target_handle->final_run(*all_subqueries[bucket]);
+                final_trec_runs[bucket] = target_collection.final_run(all_q[bucket]);
             });
             my_threads.emplace_back(std::move(q_thread));
         }
@@ -257,8 +226,8 @@ void external_sample(std::vector<collection_config>& collection_conf,
         // 3. Now we can fuse
         top_k_list final_ranking;
         document_fuser::hot_fuse(final_trec_runs, final_ranking);
-        if (final_ranking.size() > target_handle->final_k) {
-            final_ranking.resize(target_handle->final_k);
+        if (final_ranking.size() > target_collection.final_k) {
+            final_ranking.resize(target_collection.final_k);
         } 
         
         // 4. End timing block XXX
@@ -267,7 +236,7 @@ void external_sample(std::vector<collection_config>& collection_conf,
         std::cerr << query.first << "," << elapsedms << " ms\n";
 
 
-        output_trec(final_ranking, query.first, target_handle->doc_map, "ExternalRMSampler", output_handle); 
+        output_trec(final_ranking, query.first, target_collection.doc_map, "ExternalRMTrainer", output_handle); 
     }
 
     return;
@@ -345,10 +314,10 @@ int main(int argc, const char **argv) {
 #define LOOP_BODY(R, DATA, T)                                                       \
         } else if (type == BOOST_PP_STRINGIZE(T)) {                                 \
             if (compressed) {                                                       \
-                 external_sample<BOOST_PP_CAT(T, _index), wand_uniform_index>              \
+                 external_train<BOOST_PP_CAT(T, _index), wand_uniform_index>              \
                  (conf, query_file, type, query_type, output_file, seed);   \
             } else {                                                                \
-                external_sample<BOOST_PP_CAT(T, _index), wand_raw_index>                   \
+                external_train<BOOST_PP_CAT(T, _index), wand_raw_index>                   \
                  (conf, query_file, type, query_type, output_file, seed);   \
             }                                                                       \
     /**/
