@@ -239,71 +239,6 @@ void external_expansion(std::vector<collection_config>& collection_conf,
     return;
 }
 
-
-
-/*
-    // Processing type
-    std::function<std::vector<std::pair<double, uint64_t>>(ds2i::term_id_vec)> query_fun;
- 
-    if (t == "wand") {
-
-        query_fun = [&](ds2i::term_id_vec query) {
-           auto tmp = wand_query<WandType>(wdata, k_expand);
-           tmp(index, query, ranker); 
-           auto tk = tmp.topk();
-           auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
-           normalize_weighted_query(weighted_query);
-           add_original_query(r_weight, weighted_query, query);
-           auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
-           final_traversal(index, weighted_query, ranker);
-           return final_traversal.topk();
-         };
-
-    } else if (t == "block_max_wand") {
-            query_fun = [&](ds2i::term_id_vec query) {
-              auto tmp = block_max_wand_query<WandType>(wdata, k_expand);
-              tmp(index, query, ranker);
-              auto tk = tmp.topk();
-              auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
-              normalize_weighted_query(weighted_query);
-              add_original_query(r_weight, weighted_query, query);
-              auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
-              final_traversal(index, weighted_query, ranker);
-              return final_traversal.topk();
-            };
-        }  else if (t == "ranked_or") {
-            query_fun = [&](ds2i::term_id_vec query) { 
-              auto tmp = ranked_or_query<WandType>(wdata, k_expand);
-              tmp(index, query, ranker);
-              auto tk = tmp.topk();
-              auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
-              normalize_weighted_query(weighted_query);
-              add_original_query(r_weight, weighted_query, query);
-              auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
-              final_traversal(index, weighted_query, ranker);
-              return final_traversal.topk();
-          };
-        } else if (t == "maxscore") {
-            query_fun = [&](ds2i::term_id_vec query) { 
-              auto tmp = maxscore_query<WandType>(wdata, k_expand);
-              tmp(index, query, ranker); 
-              auto tk = tmp.topk();
-              auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
-              normalize_weighted_query(weighted_query);
-              add_original_query(r_weight, weighted_query, query);
-              auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
-              final_traversal(index, weighted_query, ranker);
-              return final_traversal.topk();
-            };
-        } else {
-            logger() << "Unsupported query type: " << t << std::endl;
-            break;
-        }
-
-        op_dump_trec(query_fun, queries, doc_map, t, output_handle);
-    }
-}*/
-
 typedef wand_data<wand_data_raw> wand_raw_index;
 typedef wand_data<wand_data_compressed<uniform_score_compressor>> wand_uniform_index;
 
@@ -359,10 +294,6 @@ int main(int argc, const char **argv) {
         std::ifstream in_ex(external_param[i]);
         conf.emplace_back(in_ex, false);
     }
-
-    //external_expansion<opt_index, wand_raw_index>
-    //  (conf, query_file, type, query_type, output_file);
-    //return;
 
     // Call and run the real "fun"
     /**/
