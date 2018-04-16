@@ -30,21 +30,6 @@ void printUsage(const std::string &programName) {
 
 using namespace ds2i;
 
-void output_trec(std::vector<std::pair<double, uint64_t>>& top_k,
-        uint32_t topic_id,
-        std::vector<std::string>& id_map,
-        std::string const &query_type,
-        std::ofstream& output) {
-    for (size_t n = 0; n < top_k.size(); ++n) {
-        output << topic_id << " "
-            << "Q0" << " "
-            << id_map[top_k[n].second] << " "
-            << n+1 << " "
-            << top_k[n].first << " "
-            << query_type << std::endl; 
-    }
-}
-
 template<typename Functor>
 void op_dump_trec(Functor query_func, // XXX!!!
                  std::vector<std::pair<uint32_t, ds2i::term_id_vec>> const &queries,
@@ -65,13 +50,7 @@ void op_dump_trec(Functor query_func, // XXX!!!
     }
 }
 
-typedef boost::unordered_map<uint64_t, double> fuse_map;
 typedef std::vector<std::pair<double, uint64_t>> top_k_list;
-
-void do_join(std::thread& t)
-{
-    t.join();
-}
 
 template<typename IndexType, typename WandType>
 void rm_three_expansion_external(const char *index_filename,

@@ -38,6 +38,9 @@ struct collection_config {
         else if (variable == "final_k") {
             m_final_k = std::stoull(value);
         }
+        else if (variable == "gen_queries") {
+            m_gen_queries = std::stoull(value);
+        }
         else {
             std::cerr << "Cannot parse parameter. Exiting." << std::endl;
             exit(EXIT_FAILURE);
@@ -55,6 +58,7 @@ struct collection_config {
   double m_lambda = 0;
   uint64_t m_final_k = 0;
   bool m_target = false;
+  uint64_t m_gen_queries = 0;
 
 };
 
@@ -69,5 +73,6 @@ docs_to_expand=25
 terms_to_expand=25
 lambda_expand=0.1
 final_k=1000
+gen_queries=5
 --------------
 */

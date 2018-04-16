@@ -50,7 +50,6 @@ include_directories(${STXXL_INCLUDE_DIRS})
 
 # add the root directory to include path to make includes absolute
 include_directories(${DS2I_SOURCE_DIR})
-
 add_subdirectory(succinct EXCLUDE_FROM_ALL)
 add_subdirectory(FastPFor EXCLUDE_FROM_ALL)
 
@@ -109,6 +108,13 @@ target_link_libraries(external_corpus_expansion
   ${Boost_LIBRARIES}
   FastPFor_lib
   )
+
+add_executable(external_corpus_sampler external_corpus_sampler.cpp docvector/compress_qmx.cpp)
+target_link_libraries(external_corpus_sampler
+  ${Boost_LIBRARIES}
+  FastPFor_lib
+  )
+
 
 add_executable(profile_decoding profile_decoding.cpp)
 target_link_libraries(profile_decoding

@@ -45,6 +45,7 @@ namespace ds2i {
         }
     }
 
+
     void normalize_weighted_query_ext(weight_query& query, std::unordered_map<term_id_type, term_id_type>& back_map) {
         std::vector<std::pair<term_id_type, double>>::iterator it = query.begin();
         

@@ -31,51 +31,6 @@ void printUsage(const std::string &programName) {
 
 using namespace ds2i;
 
-void output_trec(const std::vector<std::pair<double, uint64_t>>& top_k,
-        uint32_t topic_id,
-        std::vector<std::string>& id_map,
-        std::string const &query_type,
-        std::ofstream& output) {
-    for (size_t n = 0; n < top_k.size(); ++n) {
-        output << topic_id << " "
-            << "Q0" << " "
-            << id_map[top_k[n].second] << " "
-            << n+1 << " "
-            << top_k[n].first << " "
-            << query_type << std::endl; 
-    }
-}
-
-template<typename Functor>
-void op_dump_trec(Functor query_func, // XXX!!!
-                 std::vector<std::pair<uint32_t, ds2i::term_id_vec>> const &queries,
-                 std::vector<std::string>& id_map,
-                 std::string const &query_type,
-                 std::ofstream& output) {
-    using namespace ds2i;
-    
-    // Run queries
-    for (auto const &query: queries) {
-      std::vector<std::pair<double, uint64_t>> top_k;
-      auto tick = get_time_usecs();
-      top_k = query_func(query.second); // All stages
-      auto tock = get_time_usecs();
-      double elapsedms = (tock-tick)/1000;
-      std::cerr << query.first << " took ~ " << elapsedms << " ms\n";
-      output_trec(top_k, query.first, id_map, query_type, output); 
-    }
-}
-
-/*
-template<typename Functor>
-void op_extern_rm(Functor query_func,
-                  std::string query_file,
-
-    
-
-    for (auto const
-*/
-
 typedef std::vector<std::pair<double, uint64_t>> top_k_list;
 
 void do_join(std::thread& t)
@@ -83,21 +38,15 @@ void do_join(std::thread& t)
     t.join();
 }
 
-using namespace ds2i;
-
 template<typename IndexType, typename WandType>
 struct collection_data {
     
     // Collection data
     boost::iostreams::mapped_file_source m;
     boost::iostreams::mapped_file_source mw;
- 
     std::unique_ptr<IndexType> invidx;
     std::unique_ptr<WandType> wdata; 
-    //IndexType invidx;
-    //WandType wdata;
     std::unique_ptr<document_index> forward_index;
-    //document_index forward_index;
     std::unique_ptr<doc_scorer> ranker;
     std::unordered_map<std::string, uint32_t> lexicon;
     std::vector<std::string> doc_map;
@@ -152,7 +101,7 @@ struct collection_data {
         std::ifstream in_lex(conf.m_lexicon_file);
         read_lexicon(in_lex, lexicon);
 
-        // Only required for the target collection
+        // Only required for the target collection, builds TREC docname map
         if (target) {
             logger() << "Loading map file from " << conf.m_map_file << std::endl;
             std::ifstream map_in(conf.m_map_file);
@@ -163,6 +112,7 @@ struct collection_data {
         }
     }
 
+    // Builds a way to map external collection term ids to target collection term ids
     void build_term_map(const std::unordered_map<std::string, uint32_t>& target_lexicon) {
  
         for (auto it : target_lexicon) { 
@@ -172,9 +122,11 @@ struct collection_data {
             }
         }
     }
-
+    
+    // Run RM on the external corpus, find candidate terms, and map back into the
+    // target collection
+    // Currentl hardcoded to use Wand traversal for the bag-of-words
     weight_query run_rm() {
- 
         auto tmp = wand_query<WandType>(*wdata, docs_to_expand);
         tmp(*invidx, parsed_query, ranker); 
         auto tk = tmp.topk();
@@ -190,7 +142,8 @@ struct collection_data {
         }
         return weighted_query;
     } 
-    
+   
+    // Final run, currently hardcoded to use MaxScore 
     top_k_list final_run (weight_query& w_query) {
         auto final_traversal = weighted_maxscore_query<WandType>(*wdata, final_k);
         final_traversal(*invidx, w_query, ranker);
@@ -232,6 +185,7 @@ void external_expansion(std::vector<collection_config>& collection_conf,
         all_collections[i].build_term_map(target_handle->lexicon);
     } 
 
+    // Prepare output stream
     std::ofstream output_handle(output_filename);
 
     // Read query file
@@ -242,19 +196,19 @@ void external_expansion(std::vector<collection_config>& collection_conf,
     
 
     for (const auto &query : queries) {
-        
-        auto ttick = get_time_usecs();
+       
+        // 0. Begin time block here XXX 
+        auto tick = get_time_usecs();
+
         // 1. Parse and set query for each collection
         for (auto &coll : all_collections) {
             coll.parsed_query = parse_query(query.second, coll.lexicon);
         }
 
-        auto tick = get_time_usecs();
-        // 2. Run the RM process and then the final run
+        // 2. Run the RM process and then the final run on target
         std::vector<std::thread> my_threads;
         std::vector<top_k_list> final_trec_runs(all_collections.size());
         for (size_t bucket = 0; bucket < all_collections.size(); ++bucket) {
-        // for (auto &coll : all_collections) {
             auto q_thread = std::thread([&, bucket]() {
                 auto w_query = all_collections[bucket].run_rm();
                 auto w_result = target_handle->final_run(w_query);
@@ -263,23 +217,23 @@ void external_expansion(std::vector<collection_config>& collection_conf,
             my_threads.emplace_back(std::move(q_thread));
         }
       
-        // Join
+        // Join the workers
         std::for_each(my_threads.begin(), my_threads.end(), do_join);
 
-        // Now we can fuse
+        // 3. Now we can fuse
         top_k_list final_ranking;
         document_fuser::hot_fuse(final_trec_runs, final_ranking);
         if (final_ranking.size() > target_handle->final_k) {
             final_ranking.resize(target_handle->final_k);
         } 
+        
+        // 4. End timing block XXX
         auto tock = get_time_usecs();
         double elapsedms = (tock-tick)/1000;
-        std::cerr << query.first << " took ~ " << elapsedms << " ms\n";
-        elapsedms = (tock-ttick)/1000;
-        std::cerr << query.first << " took ~ " << elapsedms << " ms inc. parsing\n";
+        std::cerr << query.first << "," << elapsedms << " ms\n";
 
 
-        output_trec(final_ranking, query.first, target_handle->doc_map, "BIGFUSEBOI", output_handle); 
+        output_trec(final_ranking, query.first, target_handle->doc_map, "ExternalRM", output_handle); 
     }
 
     return;
