@@ -167,11 +167,12 @@ void external_expansion(std::vector<collection_config>& collection_conf,
               std::string query_file,
               std::string const &type,
               std::string const &query_type,
-              std::string output_filename) {
+              std::string output_filename,
+              uint64_t seed) {
     using cdata = collection_data<IndexType, WandType>;
    
     // Create a single sampler object with seed
-    weighted_sampler query_sampler(1337);
+    weighted_sampler query_sampler(seed);
     
 
     // Get the collections ready
@@ -272,71 +273,6 @@ void external_expansion(std::vector<collection_config>& collection_conf,
     return;
 }
 
-
-
-/*
-    // Processing type
-    std::function<std::vector<std::pair<double, uint64_t>>(ds2i::term_id_vec)> query_fun;
- 
-    if (t == "wand") {
-
-        query_fun = [&](ds2i::term_id_vec query) {
-           auto tmp = wand_query<WandType>(wdata, k_expand);
-           tmp(index, query, ranker); 
-           auto tk = tmp.topk();
-           auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
-           normalize_weighted_query(weighted_query);
-           add_original_query(r_weight, weighted_query, query);
-           auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
-           final_traversal(index, weighted_query, ranker);
-           return final_traversal.topk();
-         };
-
-    } else if (t == "block_max_wand") {
-            query_fun = [&](ds2i::term_id_vec query) {
-              auto tmp = block_max_wand_query<WandType>(wdata, k_expand);
-              tmp(index, query, ranker);
-              auto tk = tmp.topk();
-              auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
-              normalize_weighted_query(weighted_query);
-              add_original_query(r_weight, weighted_query, query);
-              auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
-              final_traversal(index, weighted_query, ranker);
-              return final_traversal.topk();
-            };
-        }  else if (t == "ranked_or") {
-            query_fun = [&](ds2i::term_id_vec query) { 
-              auto tmp = ranked_or_query<WandType>(wdata, k_expand);
-              tmp(index, query, ranker);
-              auto tk = tmp.topk();
-              auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
-              normalize_weighted_query(weighted_query);
-              add_original_query(r_weight, weighted_query, query);
-              auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
-              final_traversal(index, weighted_query, ranker);
-              return final_traversal.topk();
-          };
-        } else if (t == "maxscore") {
-            query_fun = [&](ds2i::term_id_vec query) { 
-              auto tmp = maxscore_query<WandType>(wdata, k_expand);
-              tmp(index, query, ranker); 
-              auto tk = tmp.topk();
-              auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
-              normalize_weighted_query(weighted_query);
-              add_original_query(r_weight, weighted_query, query);
-              auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
-              final_traversal(index, weighted_query, ranker);
-              return final_traversal.topk();
-            };
-        } else {
-            logger() << "Unsupported query type: " << t << std::endl;
-            break;
-        }
-
-        op_dump_trec(query_fun, queries, doc_map, t, output_handle);
-    }
-}*/
-
 typedef wand_data<wand_data_raw> wand_raw_index;
 typedef wand_data<wand_data_compressed<uniform_score_compressor>> wand_uniform_index;
 
@@ -356,6 +292,7 @@ int main(int argc, const char **argv) {
     std::string output_file = "";
     std::vector<std::string> external_param;
     bool compressed = false;
+    size_t seed = 1000;
 
     for (int i = 4; i < argc; ++i) {
         std::string arg = argv[i];
@@ -375,6 +312,11 @@ int main(int argc, const char **argv) {
         if (arg == "--external") {
             std::string x = argv[++i];
             external_param.push_back(x);
+        }
+
+        if (arg == "--seed") {
+            seed = std::stoull(argv[++i]);
+            std::cerr << "Random seed = " << seed << std::endl; 
         }
     }
 
@@ -403,11 +345,11 @@ int main(int argc, const char **argv) {
 #define LOOP_BODY(R, DATA, T)                                                       \
         } else if (type == BOOST_PP_STRINGIZE(T)) {                                 \
             if (compressed) {                                                       \
-                 external_expansion<BOOST_PP_CAT(T, _index), wand_uniform_index>              \
-                 (conf, query_file, type, query_type, output_file);   \
+                 external_sample<BOOST_PP_CAT(T, _index), wand_uniform_index>              \
+                 (conf, query_file, type, query_type, output_file, seed);   \
             } else {                                                                \
-                external_expansion<BOOST_PP_CAT(T, _index), wand_raw_index>                   \
-                 (conf, query_file, type, query_type, output_file);   \
+                external_sample<BOOST_PP_CAT(T, _index), wand_raw_index>                   \
+                 (conf, query_file, type, query_type, output_file, seed);   \
             }                                                                       \
     /**/
 
