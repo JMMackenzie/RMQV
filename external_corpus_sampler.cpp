@@ -25,7 +25,7 @@
 namespace {
 void printUsage(const std::string &programName) {
   std::cerr << "Usage: " << programName
-            << " index_type query_algorithm target_collection_param --external external_collection_param [can have n of these]"
+            << " index_type query_algorithm[ignored] target_collection_param --external external_collection_param [can have n of these]"
             << " --query query_filename --output output_file" << std::endl;
 }
 } // namespace
@@ -100,9 +100,9 @@ struct collection_data {
         // 4. Ranker      
         //std::unique_ptr<doc_scorer> 
         ranker = build_ranker(wdata->average_doclen(), 
-                                                          wdata->num_docs(),
-                                                          wdata->terms_in_collection(),
-                                                          wdata->ranker_id());
+                              wdata->num_docs(),
+                              wdata->terms_in_collection(),
+                              wdata->ranker_id());
         // 5. Lexicon
         std::ifstream in_lex(conf.m_lexicon_file);
         read_lexicon(in_lex, lexicon);
@@ -131,9 +131,9 @@ struct collection_data {
     
     // Run RM on the external corpus, find candidate terms, and map back into the
     // target collection
-    // Currently hardcoded to use Wand traversal for the bag-of-words
+    // Currently hardcoded to use BMW traversal for the bag-of-words
     std::vector<term_id_vec> run_rm_sampler() {
-        auto tmp = wand_query<WandType>(*wdata, docs_to_expand);
+        auto tmp = block_max_wand_query<WandType>(*wdata, docs_to_expand);
         tmp(*invidx, parsed_query, ranker); 
         auto tk = tmp.topk();
         auto weighted_query = (*forward_index).rm_expander(tk, terms_to_expand);
@@ -208,67 +208,91 @@ void external_sample(std::vector<collection_config>& collection_conf,
     std::map<uint32_t, std::vector<std::string>> queries;
     read_string_query_file(queries, qs);
     std::cerr << "Read " << queries.size() << " queries.\n";
-    
+   
+    std::map<uint32_t, double> query_times;
 
-    for (const auto &query : queries) {
+    size_t runs = 5;
+    for (size_t r = 0; r < runs; ++r) {
+  
+        for (const auto &query : queries) {
        
-        // 0. Begin time block here XXX 
-        auto tick = get_time_usecs();
+            // 0. Begin time block here XXX 
+            auto tick = get_time_usecs();
 
-        // 1. Parse and set query for each collection
-        for (auto &coll : all_collections) {
-            coll.parsed_query = parse_query(query.second, coll.lexicon);
-        }
+            // 1. Parse and set query for each collection
+            for (auto &coll : all_collections) {
+                coll.parsed_query = parse_query(query.second, coll.lexicon);
+            }
 
-        // 2. Run the RM process and generate queries
-        std::vector<std::thread> my_threads;
-        std::vector<std::vector<term_id_vec>> all_q(all_collections.size());
-        for (size_t bucket = 0; bucket < all_collections.size(); ++bucket) {
-            auto q_thread = std::thread([&, bucket]() {
-                all_q[bucket] = all_collections[bucket].run_rm_sampler();
-            });
-            my_threads.emplace_back(std::move(q_thread));
-        }
+            // 2. Run the RM process and generate queries
+            std::vector<std::thread> my_threads;
+            std::vector<std::vector<term_id_vec>> all_q(all_collections.size()-1);
+            // Exclude bucket 0 because this is the target collection
+            for (size_t bucket = 1; bucket < all_collections.size(); ++bucket) {
+                auto q_thread = std::thread([&, bucket-1]() {
+                    all_q[bucket] = all_collections[bucket].run_rm_sampler();
+                });
+                my_threads.emplace_back(std::move(q_thread));
+            }
       
-        // Join the workers
-        std::for_each(my_threads.begin(), my_threads.end(), do_join);
-        my_threads.clear();
+            // Join the workers
+            std::for_each(my_threads.begin(), my_threads.end(), do_join);
+            my_threads.clear();
 
-        std::vector<term_id_vec*> all_subqueries;
-        for (size_t i = 0; i < all_q.size(); i++) {
-            for(size_t j = 0; j < all_q[i].size(); ++j) {
-                all_subqueries.emplace_back(&all_q[i][j]);
+            std::vector<term_id_vec*> all_subqueries;
+            for (size_t i = 0; i < all_q.size(); i++) {
+                for(size_t j = 0; j < all_q[i].size(); ++j) {
+                    all_subqueries.emplace_back(&all_q[i][j]);
+                }
+            }
+            // Now just add into the mix the title query that the user entered
+            all_subqueries.emplace_back(&target_handle->parsed_query);
+
+            // Run all sub-queries on the target 
+            std::vector<top_k_list> final_trec_runs(all_subqueries.size());
+            for (size_t bucket = 0; bucket < all_subqueries.size(); ++bucket) {
+                auto q_thread = std::thread([&, bucket]() {
+                    final_trec_runs[bucket] = target_handle->final_run(*all_subqueries[bucket]);
+                });
+                my_threads.emplace_back(std::move(q_thread));
+            }
+ 
+            // Join the workers
+            std::for_each(my_threads.begin(), my_threads.end(), do_join);
+            my_threads.clear(); 
+
+            // 3. Now we can fuse
+            top_k_list final_ranking;
+            document_fuser::hot_fuse(final_trec_runs, final_ranking);
+            if (final_ranking.size() > target_handle->final_k) {
+                final_ranking.resize(target_handle->final_k);
+            } 
+        
+            // 4. End timing block XXX
+            auto tock = get_time_usecs();
+            double elapsed = (tock-tick);
+            //std::cout<< query.first << "," << elapsedms << std::endl;
+
+            if (r == 0) {
+              output_trec(final_ranking, query.first, target_handle->doc_map, "ExternalRMSampler", output_handle); 
+            }
+            else {
+                auto itr = query_times.find(query.first);
+                if(itr != query_times.end()) {
+                    itr->second += elapsed;
+                } else {
+                    query_times[query.first] = elapsed;
+                }
             }
         }
-
-  
-        std::vector<top_k_list> final_trec_runs(all_subqueries.size());
-         for (size_t bucket = 0; bucket < all_subqueries.size(); ++bucket) {
-            auto q_thread = std::thread([&, bucket]() {
-                final_trec_runs[bucket] = target_handle->final_run(*all_subqueries[bucket]);
-            });
-            my_threads.emplace_back(std::move(q_thread));
-        }
- 
-        // Join the workers
-        std::for_each(my_threads.begin(), my_threads.end(), do_join);
-        my_threads.clear(); 
-
-        // 3. Now we can fuse
-        top_k_list final_ranking;
-        document_fuser::hot_fuse(final_trec_runs, final_ranking);
-        if (final_ranking.size() > target_handle->final_k) {
-            final_ranking.resize(target_handle->final_k);
-        } 
-        
-        // 4. End timing block XXX
-        auto tock = get_time_usecs();
-        double elapsedms = (tock-tick)/1000;
-        std::cerr << query.first << "," << elapsedms << " ms\n";
-
-
-        output_trec(final_ranking, query.first, target_handle->doc_map, "ExternalRMSampler", output_handle); 
     }
+
+    // Take mean of the timings and dump per-query
+    for(auto& timing : query_times) {
+        timing.second = timing.second / (runs-1);
+        std::cout << timing.first << "," << (timing.second / 1000.0) <<  std::endl;
+    }
+
 
     return;
 }

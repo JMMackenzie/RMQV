@@ -38,16 +38,39 @@ void op_dump_trec(Functor query_func, // XXX!!!
                  std::ofstream& output) {
     using namespace ds2i;
     
-    // Run queries
-    for (auto const &query: queries) {
-      std::vector<std::pair<double, uint64_t>> top_k;
-      auto tick = get_time_usecs();
-      top_k = query_func(query.second); // All stages
-      auto tock = get_time_usecs();
-      double elapsedms = (tock-tick)/1000;
-      std::cerr << query.first << "," << elapsedms << " ms\n";
-      output_trec(top_k, query.first, id_map, query_type, output); 
+    std::map<uint32_t, double> query_times;
+
+    size_t runs = 5;
+    for (size_t r = 0; r < runs; ++r) {
+        // Run queries
+        for (auto const &query: queries) {
+            std::vector<std::pair<double, uint64_t>> top_k;
+            auto tick = get_time_usecs();
+            top_k = query_func(query.second); // All stages
+            auto tock = get_time_usecs();
+            double elapsed = (tock-tick);
+      
+            if (r == 0) {
+              output_trec(top_k, query.first, id_map, query_type, output);
+            }
+            else {
+                auto itr = query_times.find(query.first);
+                if(itr != query_times.end()) {
+                    itr->second += elapsed;
+                } else {
+                    query_times[query.first] = elapsed;
+                }
+            }
+        }
     }
+
+    // Take mean of the timings and dump per-query
+    for(auto& timing : query_times) {
+        timing.second = timing.second / (runs-1);
+        std::cout << timing.first << "," << (timing.second / 1000.0) <<  std::endl;
+    }
+
+
 }
 
 typedef std::vector<std::pair<double, uint64_t>> top_k_list;
@@ -141,13 +164,17 @@ void rm_three_expansion(
         } else if (t == "block_max_wand" && wand_data_filename) {
             query_fun = [&](ds2i::term_id_vec query) {
               auto tmp = block_max_wand_query<WandType>(wdata, k_expand);
-              tmp(index, query, ranker);
+              auto PROF = tmp(index, query, ranker);
+              //std::cerr << "f_postings_scored," << PROF.second << std::endl;
+ 
               auto tk = tmp.topk();
               auto weighted_query = forward_index.rm_expander(tk, expand_term_count);
               normalize_weighted_query(weighted_query);
               add_original_query(r_weight, weighted_query, query);
               auto final_traversal = weighted_maxscore_query<WandType>(wdata, k_final);
-              final_traversal(index, weighted_query, ranker);
+              PROF = final_traversal(index, weighted_query, ranker);
+              //std::cerr << "w_postings_scored," << PROF.second << std::endl;
+ 
               return final_traversal.topk();
             };
         }  else if (t == "ranked_or" && wand_data_filename) {

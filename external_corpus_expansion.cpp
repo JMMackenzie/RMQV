@@ -24,7 +24,7 @@
 namespace {
 void printUsage(const std::string &programName) {
   std::cerr << "Usage: " << programName
-            << " index_type query_algorithm target_collection_param --external external_collection_param [can have n of these]"
+            << " index_type query_algorithm[ignored] target_collection_param --external external_collection_param [can have n of these]"
             << " --query query_filename --output output_file" << std::endl;
 }
 } // namespace
@@ -94,9 +94,9 @@ struct collection_data {
         // 4. Ranker      
         //std::unique_ptr<doc_scorer> 
         ranker = build_ranker(wdata->average_doclen(), 
-                                                          wdata->num_docs(),
-                                                          wdata->terms_in_collection(),
-                                                          wdata->ranker_id());
+                              wdata->num_docs(),
+                              wdata->terms_in_collection(),
+                              wdata->ranker_id());
         // 5. Lexicon
         std::ifstream in_lex(conf.m_lexicon_file);
         read_lexicon(in_lex, lexicon);
@@ -125,10 +125,11 @@ struct collection_data {
     
     // Run RM on the external corpus, find candidate terms, and map back into the
     // target collection
-    // Currentl hardcoded to use Wand traversal for the bag-of-words
+    // Currentl hardcoded to use BMW traversal for the bag-of-words
     weight_query run_rm() {
-        auto tmp = wand_query<WandType>(*wdata, docs_to_expand);
-        tmp(*invidx, parsed_query, ranker); 
+        auto tmp = block_max_wand_query<WandType>(*wdata, docs_to_expand);
+        auto PROF = tmp(*invidx, parsed_query, ranker); 
+        //std::cerr << "f_postings_scored," << PROF.second << std::endl;
         auto tk = tmp.topk();
         auto weighted_query = (*forward_index).rm_expander(tk, terms_to_expand);
         if (!target) {
@@ -146,7 +147,8 @@ struct collection_data {
     // Final run, currently hardcoded to use MaxScore 
     top_k_list final_run (weight_query& w_query) {
         auto final_traversal = weighted_maxscore_query<WandType>(*wdata, final_k);
-        final_traversal(*invidx, w_query, ranker);
+        auto PROF = final_traversal(*invidx, w_query, ranker);
+        //std::cerr << "w_postings_scored," << PROF.second << std::endl;
         return final_traversal.topk();
     }
 
@@ -194,46 +196,67 @@ void external_expansion(std::vector<collection_config>& collection_conf,
     read_string_query_file(queries, qs);
     std::cerr << "Read " << queries.size() << " queries.\n";
     
-
-    for (const auto &query : queries) {
+    std::map<uint32_t, double> query_times;
+    size_t runs = 5;
+ 
+    for (size_t repeat = 0; repeat < runs; ++repeat) {
+        for (const auto &query : queries) {
        
-        // 0. Begin time block here XXX 
-        auto tick = get_time_usecs();
+            // 0. Begin time block here XXX 
+            auto tick = get_time_usecs();
 
-        // 1. Parse and set query for each collection
-        for (auto &coll : all_collections) {
-            coll.parsed_query = parse_query(query.second, coll.lexicon);
-        }
+            // 1. Parse and set query for each collection
+            for (auto &coll : all_collections) {
+                coll.parsed_query = parse_query(query.second, coll.lexicon);
+            }
 
-        // 2. Run the RM process and then the final run on target
-        std::vector<std::thread> my_threads;
-        std::vector<top_k_list> final_trec_runs(all_collections.size());
-        for (size_t bucket = 0; bucket < all_collections.size(); ++bucket) {
-            auto q_thread = std::thread([&, bucket]() {
-                auto w_query = all_collections[bucket].run_rm();
-                auto w_result = target_handle->final_run(w_query);
-                final_trec_runs[bucket] = w_result;
-            });
-            my_threads.emplace_back(std::move(q_thread));
-        }
+            // 2. Run the RM process and then the final run on target
+            std::vector<std::thread> my_threads;
+            std::vector<top_k_list> final_trec_runs(all_collections.size()-1);
+            // Skip over target collection (set bucket = 1)
+            for (size_t bucket = 1; bucket < all_collections.size(); ++bucket) {
+                auto q_thread = std::thread([&, bucket]() {
+                    auto w_query = all_collections[bucket].run_rm();
+                    auto w_result = target_handle->final_run(w_query);
+                    final_trec_runs[bucket-1] = w_result;
+                });
+                my_threads.emplace_back(std::move(q_thread));
+            }
       
-        // Join the workers
-        std::for_each(my_threads.begin(), my_threads.end(), do_join);
+            // Join the workers
+            std::for_each(my_threads.begin(), my_threads.end(), do_join);
 
-        // 3. Now we can fuse
-        top_k_list final_ranking;
-        document_fuser::hot_fuse(final_trec_runs, final_ranking);
-        if (final_ranking.size() > target_handle->final_k) {
-            final_ranking.resize(target_handle->final_k);
-        } 
+            // 3. Now we can fuse
+            top_k_list final_ranking;
+            document_fuser::hot_fuse(final_trec_runs, final_ranking);
+            if (final_ranking.size() > target_handle->final_k) {
+                final_ranking.resize(target_handle->final_k);
+            } 
         
-        // 4. End timing block XXX
-        auto tock = get_time_usecs();
-        double elapsedms = (tock-tick)/1000;
-        std::cerr << query.first << "," << elapsedms << " ms\n";
+            // 4. End timing block XXX
+            auto tock = get_time_usecs();
+            double elapsed = (tock-tick);
+        
+            //std::cerr << query.first << "," << elapsedms << " ms\n";
 
+            if (repeat == 0) {
+                output_trec(final_ranking, query.first, target_handle->doc_map, "ExternalRM", output_handle);
+            }
+            else {
+                auto itr = query_times.find(query.first);
+                if(itr != query_times.end()) {
+                    itr->second += elapsed;
+                } else {
+                    query_times[query.first] = elapsed;
+                }
+            }
+        }
+    }
 
-        output_trec(final_ranking, query.first, target_handle->doc_map, "ExternalRM", output_handle); 
+    // Take mean of the timings and dump per-query
+    for(auto& timing : query_times) {
+        timing.second = timing.second / (runs-1);
+        std::cout << timing.first << "," << (timing.second / 1000.0) << std::endl;
     }
 
     return;
