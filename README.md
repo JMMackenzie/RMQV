@@ -3,12 +3,35 @@ RMQV
 This repository contains the necessary data structures and algorithms to perform a) RM3
 query expansion, b) Rank fusion, and c) A combination of these approaches.
 
-JMM TO DO...
+Building Collections
+--------------------
+### Inverted Index ###
+First, we start with an Indri index. We then convert it to a ds2i index using the `indri_to_ds2i`
+binary in the `format_collection` directory. 
+
+Apart from the normal ds2i files (which a description can be found at the bottom of this README),
+a document map and lexicon are also output.
+
+Next, once you have a ds2i formatted collection, you can build the PEF index and wand data required
+for top-*k* search. This is well documented below (in the ds2i section of this README). Note that
+I always use `opt` encoding. VBMW indexes need to be built with caution: the parameter 
+`fixed_cost_wand_partition` found in
+`configuration.hpp` will impact the optimization of block sizes, and you may end up with an index with
+a strange/unexpected average block size. This is the lambda parameter from the VBMW paper.
+If you only care about fixed BMW indexes, you can use
+the `block_size` parameter (also in `configuration.hpp`) to create a normal BMW index with the 
+provided block size.  
+
+### Document Vectors ###
+The document vector code is entirely contained within the `docvector/` directory. Build the code,
+and then use `create_docvectors` to generate the document vector for the collection. This is
+similar to the creation of the inverted indexes (it takes a ds2i collection as input). You can
+also provide a stoplist to ensure your document vectors do not contain certain terms.
 
 Query Format
 ------------
 Queries are of the form `ID t1 t2 ... tk` where terms should be appropriately stemmed/stopped before
-being passed into the engine.
+being passed into the engine. A Krovetz stemmer has been provided in the `format_queries` directory.
 
 
 Param files
