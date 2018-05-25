@@ -10,6 +10,9 @@ struct collection_config {
 
     std::string line;
     while(std::getline(configuration, line)) {
+        if (line.empty()) {
+          continue;
+        }
         auto delim = line.find("=");
         std::string variable = line.substr(0, delim);
         std::string value = line.substr(delim+1);
