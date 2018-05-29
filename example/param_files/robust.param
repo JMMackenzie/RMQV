@@ -1,0 +1,9 @@
+raw_collection=/home/el3/e12823/desires_tests/Desires-Pipeline/example/ds2i_raw_target/robust
+inverted_index=/home/el3/e12823/desires_tests/Desires-Pipeline/example/target_idx/robust.opt.pef.idx
+forward_index=/home/el3/e12823/desires_tests/Desires-Pipeline/example/target_idx/robust.docvector
+wand_file=/home/el3/e12823/desires_tests/Desires-Pipeline/example/target_idx/robust-64.bmw
+docs_to_expand=50
+terms_to_expand=100
+lambda_expand=0.1
+final_k=1000
+gen_queries=100
