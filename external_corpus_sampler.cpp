@@ -149,6 +149,15 @@ struct collection_data {
             normalize_weighted_query(weighted_query);
             new_bow = sampler->generate_query_batch(weighted_query, parsed_query, 5, 15, gen_queries); 
         }
+
+        // DUMP IT XXX JMM
+//        std::cerr << "____BEGIN____\n";
+//        for (size_t i = 0; i < new_bow.size(); ++i) {
+//            for(size_t j = 0; j < new_bow[i].size(); j++)
+//              std::cerr << new_bow[i][j] << " "; 
+//          std::cerr << "\n";
+//        }
+//        std::cerr << "____END____\n"; 
         return new_bow;
     } 
    
@@ -211,7 +220,7 @@ void external_sample(std::vector<collection_config>& collection_conf,
    
     std::map<uint32_t, double> query_times;
 
-    size_t runs = 5;
+    size_t runs = 1; // TIMINGS
     for (size_t r = 0; r < runs; ++r) {
   
         for (const auto &query : queries) {
@@ -229,12 +238,12 @@ void external_sample(std::vector<collection_config>& collection_conf,
             std::vector<std::vector<term_id_vec>> all_q(all_collections.size()-1);
             // Exclude bucket 0 because this is the target collection
             for (size_t bucket = 1; bucket < all_collections.size(); ++bucket) {
-                auto q_thread = std::thread([&, bucket-1]() {
+                auto q_thread = std::thread([&, bucket]() {
                     all_q[bucket] = all_collections[bucket].run_rm_sampler();
                 });
                 my_threads.emplace_back(std::move(q_thread));
             }
-      
+
             // Join the workers
             std::for_each(my_threads.begin(), my_threads.end(), do_join);
             my_threads.clear();
