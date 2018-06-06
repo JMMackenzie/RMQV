@@ -150,14 +150,6 @@ struct collection_data {
             new_bow = sampler->generate_query_batch(weighted_query, parsed_query, 5, 15, gen_queries); 
         }
 
-        // DUMP IT XXX JMM
-//        std::cerr << "____BEGIN____\n";
-//        for (size_t i = 0; i < new_bow.size(); ++i) {
-//            for(size_t j = 0; j < new_bow[i].size(); j++)
-//              std::cerr << new_bow[i][j] << " "; 
-//          std::cerr << "\n";
-//        }
-//        std::cerr << "____END____\n"; 
         return new_bow;
     } 
    
