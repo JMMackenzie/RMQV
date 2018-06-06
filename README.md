@@ -59,6 +59,10 @@ Note that:
 * `final_k` is the final top-k list size, and
 * `gen_queries` is the number of queries to generate if using the sampler (`external_corpus_sampler`). 
 
+Walk through
+------------
+We provide a basic end-to-end walkthrough in the `example` directory.
+
 ds2i
 ====
 

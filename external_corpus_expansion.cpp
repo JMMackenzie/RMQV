@@ -141,6 +141,12 @@ struct collection_data {
             normalize_weighted_query(weighted_query);
             add_original_query(lambda, weighted_query, parsed_query);
         }
+        // DUMP IT XXX JMM
+        std::cerr << "____BEGIN____\n";
+        for (size_t i = 0; i < weighted_query.size(); ++i) {
+            std::cerr << weighted_query[i].first << "," << weighted_query[i].second << std::endl;
+        }
+        std::cerr << "____END____\n";
         return weighted_query;
     } 
    
@@ -197,7 +203,7 @@ void external_expansion(std::vector<collection_config>& collection_conf,
     std::cerr << "Read " << queries.size() << " queries.\n";
     
     std::map<uint32_t, double> query_times;
-    size_t runs = 5;
+    size_t runs = 1; // TIMINGS
  
     for (size_t repeat = 0; repeat < runs; ++repeat) {
         for (const auto &query : queries) {

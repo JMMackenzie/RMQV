@@ -230,7 +230,7 @@ void rm_three_expansion_external(const char *index_filename,
         } else if (t == "maxscore" && wand_data_filename) {
             /* Our favorite 1 */
             query_fun = [&](ds2i::term_id_vec query) { 
-              auto tmp = maxscore_query<WandType>(ext_wdata, k_expand);
+              auto tmp = block_max_wand_query<WandType>(ext_wdata, k_expand); // USE BMW FOR STAGE 1
               tmp(ext_index, query, ext_ranker); 
               auto tk = tmp.topk();
               auto weighted_query = ext_forward_index.rm_expander(tk, expand_term_count);
