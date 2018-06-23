@@ -3,6 +3,10 @@ RMQV
 This repository contains the necessary data structures and algorithms to perform a) RM3
 query expansion, b) Rank fusion, and c) A combination of these approaches.
 
+This framework was used in the results from the following work:
+* Rodger Benham, J. Shane Culpepper, Luke Gallagher, Xiaolu Lu, Joel Mackenzie, _Towards Efficient and Effective Query Variant Generation_, DESIRES 2018.
+
+
 Building Collections
 --------------------
 ### Inverted Index ###
