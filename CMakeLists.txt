@@ -168,6 +168,24 @@ target_link_libraries(shuffle_docids
   FastPFor_lib
   )
 
+add_executable(indri_to_ds2i format_index/indri_to_ds2i.cpp)
+set_target_properties(indri_to_ds2i PROPERTIES COMPILE_FLAGS ${INDRI_DEP_FLAGS})
+add_dependencies(indri_to_ds2i indri_proj)
+target_link_libraries(indri_to_ds2i
+    indri
+    lemur
+    pthread
+    z
+    m
+)
+
+include_directories(${CMAKE_HOME_DIRECTORY}/docvector)
+add_executable(create_docvectors
+    docvector/create_docvectors.cpp
+    docvector/compress_qmx.cpp
+    docvector/create_docvectors.cpp
+)
+#target_link_libraries(create_docvectors m)
 
 # XXX Rodger: Disabled tests as they wouldn't build
 #enable_testing()
