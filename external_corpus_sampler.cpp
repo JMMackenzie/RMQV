@@ -227,7 +227,7 @@ void external_sample(std::vector<collection_config>& collection_conf,
 
             // 2. Run the RM process and generate queries
             std::vector<std::thread> my_threads;
-            std::vector<std::vector<term_id_vec>> all_q(all_collections.size()-1);
+            std::vector<std::vector<term_id_vec>> all_q(all_collections.size());
             // Exclude bucket 0 because this is the target collection
             for (size_t bucket = 1; bucket < all_collections.size(); ++bucket) {
                 auto q_thread = std::thread([&, bucket]() {
