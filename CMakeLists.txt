@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 2.8)
+include(ExternalProject)
 project(DS2I)
 
 configure_file(
@@ -52,6 +53,38 @@ include_directories(${STXXL_INCLUDE_DIRS})
 include_directories(${DS2I_SOURCE_DIR})
 add_subdirectory(succinct EXCLUDE_FROM_ALL)
 add_subdirectory(FastPFor EXCLUDE_FROM_ALL)
+
+# Indri
+externalproject_add(indri_proj
+    SOURCE_DIR ${CMAKE_HOME_DIRECTORY}/indri
+    CONFIGURE_COMMAND ./configure
+    BUILD_IN_SOURCE 1
+    BUILD_COMMAND make
+    INSTALL_COMMAND ""
+    )
+file(MAKE_DIRECTORY ${CMAKE_HOME_DIRECTORY}/indri/contrib/antlr/obj)
+file(MAKE_DIRECTORY ${CMAKE_HOME_DIRECTORY}/indri/contrib/lemur/obj)
+file(MAKE_DIRECTORY ${CMAKE_HOME_DIRECTORY}/indri/contrib/xpdf/obj)
+file(MAKE_DIRECTORY ${CMAKE_HOME_DIRECTORY}/indri/obj)
+set(INDRI_INCLUDE_DIRS
+    ${CMAKE_HOME_DIRECTORY}/indri/include
+    ${CMAKE_HOME_DIRECTORY}/indri/contrib/antlr/include
+    ${CMAKE_HOME_DIRECTORY}/indri/contrib/lemur/include
+    ${CMAKE_HOME_DIRECTORY}/indri/contrib/xpdf/include
+    ${CMAKE_HOME_DIRECTORY}/indri/contrib/zlib/include
+    )
+include_directories(${INDRI_INCLUDE_DIRS})
+set(INDRI_LIB_DIR ${CMAKE_HOME_DIRECTORY}/indri)
+add_library(indri STATIC IMPORTED)
+set_target_properties(indri PROPERTIES IMPORTED_LOCATION ${INDRI_LIB_DIR}/obj/libindri.a)
+add_library(lemur STATIC IMPORTED)
+set_target_properties(lemur PROPERTIES IMPORTED_LOCATION ${INDRI_LIB_DIR}/contrib/lemur/obj/liblemur.a)
+add_library(antlr STATIC IMPORTED)
+set_target_properties(antlr PROPERTIES IMPORTED_LOCATION ${INDRI_LIB_DIR}/contrib/antlr/obj/libantlr.a)
+add_library(xpdf STATIC IMPORTED)
+set_target_properties(xpdf PROPERTIES IMPORTED_LOCATION ${INDRI_LIB_DIR}/contrib/xpdf/obj/libxpdf.a)
+# binaries that link libindri.a need these flags set
+set(INDRI_DEP_FLAGS "-DHAVE_EXT_ATOMICITY=1 -DP_NEEDS_GNU_CXX_NAMESPACE=1")
 
 add_executable(create_freq_index create_freq_index.cpp wand_data.hpp)
 target_link_libraries(create_freq_index
@@ -135,6 +168,24 @@ target_link_libraries(shuffle_docids
   FastPFor_lib
   )
 
+add_executable(indri_to_ds2i format_index/indri_to_ds2i.cpp)
+set_target_properties(indri_to_ds2i PROPERTIES COMPILE_FLAGS ${INDRI_DEP_FLAGS})
+add_dependencies(indri_to_ds2i indri_proj)
+target_link_libraries(indri_to_ds2i
+    indri
+    lemur
+    pthread
+    z
+    m
+)
+
+include_directories(${CMAKE_HOME_DIRECTORY}/docvector)
+add_executable(create_docvectors
+    docvector/create_docvectors.cpp
+    docvector/compress_qmx.cpp
+    docvector/create_docvectors.cpp
+)
+#target_link_libraries(create_docvectors m)
 
 # XXX Rodger: Disabled tests as they wouldn't build
 #enable_testing()

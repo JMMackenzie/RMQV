@@ -7,3 +7,6 @@
 [submodule "stxxl"]
 	path = stxxl
 	url = https://github.com/stxxl/stxxl.git
+[submodule "indri"]
+	path = indri
+	url = https://github.com/lgrz/indri

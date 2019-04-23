@@ -56,7 +56,7 @@ gen_queries=100
 Note that:
 * `inverted_index` is created using `create_freq_index`, 
 * `wand_file is created with `create_wand_data`, 
-* `forward_index` is created using `docvector/create_docvectors`,
+* `forward_index` is created using `create_docvectors`,
 * `docs_to_expand` is the number of documents to use for RM3 expansion,
 * `terms_to_expand` is the number of terms to expand from the RM (when creating the new, expanded query),
 * `lambda_expand` is the weight given to the original query, (1-lambda is given to the expanded query),
@@ -100,8 +100,7 @@ The code depends on several git submodules. If you have cloned the repository
 without `--recursive`, you will need to perform the following commands before
 building:
 
-    $ git submodule init
-    $ git submodule update
+    $ git submodule update --init --recursive
 
 To build the code:
 
