@@ -70,7 +70,7 @@ void op_perftest(Functor query_func, // XXX!!!
 
     // Take mean of the timings and dump per-query
     for(auto& timing : query_times) {
-      timing.second = timing.second / (runs-1);
+      timing.second = timing.second / runs;
       auto profp = profiled[timing.first];
       std::cout << timing.first << ";" << (timing.second / 1000.0) <<  ";" << profp.first << ";" << profp.second << std::endl;
     }
